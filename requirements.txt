@@ -1,0 +1,42 @@
+# Обработка данных
+pandas>=2.0.0
+numpy>=1.24.0
+pdfplumber>=0.10.0
+
+# Embeddings и векторное хранилище
+sentence-transformers>=2.2.0
+faiss-cpu>=1.7.4
+rank-bm25>=0.2.2
+
+# LLM и LoRA
+transformers>=4.35.0
+peft>=0.6.0
+accelerate>=0.24.0
+# bitsandbytes>=0.41.0  # Не поддерживается на Apple Silicon
+trl>=0.7.0
+
+mlx-lm>=0.10.0; sys_platform == 'darwin' and platform_machine == 'arm64'
+
+# llama-cpp-python для локальных LLM (Llama 3.1)
+llama-cpp-python>=0.2.50
+
+# RAG
+langchain>=0.1.0
+langchain-community>=0.0.10
+
+# Бот и API
+aiogram>=3.3.0
+fastapi>=0.104.0
+uvicorn>=0.24.0
+pydantic>=2.5.0
+httpx>=0.25.0
+
+# Утилиты
+python-dotenv>=1.0.0
+tqdm>=4.66.0
+jinja2>=3.1.2
+tiktoken>=0.5.0
+
+# Тесты
+pytest>=7.4.0
+pytest-asyncio>=0.21.0

@@ -1,3 +1,25 @@
+docs/*
+
+!docs/plan.md
+
+# Данные
+data/raw/*
+data/processed/*
+data/indices/*
+data/models/*
+
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/indices/.gitkeep
+
+# ML артефакты
+src/lora/adapters/
+evaluation/results/
+
+# Логи
+logs/
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -135,6 +157,7 @@ celerybeat.pid
 *.sage.py
 
 # Environments
+.env*
 .env
 .envrc
 .venv
