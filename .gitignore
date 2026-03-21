@@ -1,6 +1,7 @@
 docs/*
 
 !docs/plan.md
+!docs/architecture.md
 
 # Данные
 data/raw/*
@@ -18,7 +19,7 @@ evaluation/results/
 
 # Логи
 logs/
-
+QWEN.md
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -31,11 +31,25 @@ class Config(BaseModel):
     # LLM настройки
     llm: dict = Field(default_factory=lambda: {
         "provider": "local",  # local, ollama, vllm
-        "model": "llama-3.1-8b-instruct",
-        "quantization": "Q5_K_M",
-        "temperature": 0.7,
-        "max_tokens": 512,
+        "model": "vikhr-nemo-12b-instruct-r",  # ДЕФОЛТНАЯ LLM
+        "quantization": "Q8_0",
+        "temperature": 0.3,
+        "max_tokens": 2048,
         "context_size": 8192,
+        "stage1": {"temperature": 0.5, "max_tokens": 1000},
+        "stage2": {"temperature": 0.1, "max_tokens": 50},
+        "stage3": {"temperature": 0.5, "max_tokens": 2048},
+    })
+    
+    # Параметры обработки чата
+    chat_processing: dict = Field(default_factory=lambda: {
+        "group_size": 50,
+        "overlap_size": 5,
+        "min_message_length": 10,
+        "stop_words": [
+            "спасибо", "ок", "понял", "благодарю", "+", "да",
+            "спс", "благодарка", "круто", "супер", "хорошо"
+        ],
     })
     
     # Bot настройки
@@ -121,7 +135,7 @@ class Config(BaseModel):
             # YAML не установлен, вернуть default
             return cls()
         except Exception as e:
-            print(f"⚠️  Ошибка загрузки конфига: {e}")
+            print(f"Ошибка загрузки конфига: {e}")
             return cls()
     
     def save(self, filepath: Path) -> None:
@@ -131,22 +145,7 @@ class Config(BaseModel):
             with open(filepath, 'w', encoding='utf-8') as f:
                 yaml.safe_dump(self.model_dump(), f, default_flow_style=False, allow_unicode=True)
         except ImportError:
-            print("⚠️  YAML не установлен, невозможно сохранить конфиг")
-    
-    @property
-    def processed_dir(self) -> Path:
-        """Директория обработанных данных"""
-        return self.data_dir_path / "processed"
-
-    @property
-    def indices_dir(self) -> Path:
-        """Директория индексов"""
-        return self.data_dir_path / "indices"
-
-    @property
-    def raw_dir(self) -> Path:
-        """Директория сырых данных"""
-        return self.data_dir_path / "raw"
+            print("YAML не установлен, невозможно сохранить конфиг")
 
 
 # Глобальный экземпляр

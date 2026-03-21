@@ -86,7 +86,7 @@
 4. **Где запускать** – QLoRA требует библиотеку bitsandbytes, которая недоступна на apple silicon. На apple silion доступна только LoRA.
 
 ### 2.3: Продакшен
-1. **Inference** — vLLM / Ollama (по нагрузке).
+1. **Inference** — Ollama.
 2. **Мониторинг** — логи, метрики, алерты.
 
 ## 3. Финальные требования
@@ -115,8 +115,8 @@
 * **LLM / дообучение:** Hugging Face `transformers` + `peft` (LoRA) + `bitsandbytes` + `accelerate`. Модель — `Vikhr-Llama3.1-8B-Instruct-R`.
 * **RAG-оркестровка:** Кастомный пайплайн с query rewriting и response validation.
 * **Сервис и интерфейс:** FastAPI (сервер), aiogram (бот), Docker.
-* **Inference:** Ollama (MVP), vLLM / Text-Generation-Inference (prod).
-* **Мониторинг и логирование:** Prometheus + Grafana, ELK/Sentry для логов и ошибок.
+* **Inference:** Ollama.
+* **Мониторинг и логирование(возможно):** Prometheus + Grafana, ELK/Sentry для логов и ошибок.
 
 ### 3.4 Ключевые требования и риски
 
@@ -131,71 +131,11 @@
 | Recall@5 (RAG) | > 0.85 |
 | Фактическая точность | > 90% |
 | Hallucination rate | < 5% |
-| Latency P95 | < 3 сек |
-| Uptime | > 99% |
 
-### 3.6 Технологии (итоговый стек)
 
-| Компонент | Технология | Версия |
-|-----------|------------|--------|
-| **Язык** | Python | 3.10+ |
-| **Embeddings** | BAAI/bge-m3 (dense) + BM25 (sparse) | latest |
-| **Reranking** | bge-reranker (cross-encoder) | latest |
-| **Vector DB** |4 FAISS (HNSW) | latest |
-| **LLM** | Vikhr-Llama3.1-8B-Instruct-R | latest |
-| **LoRA** | PEFT + transformers | 0.8.0+ |
-| **RAG Pipeline** | Кастомный (query rewriting, reranking, validation) | - |
-| **Bot Framework** | aiogram | 3.0+ |
-| **Backend** | FastAPI | 0.100+ |
-| **Inference** | Ollama (MVP), vLLM (Prod) | latest |
-| **Containerization** | Docker + Docker Compose | latest |
-| **Monitoring** | Prometheus + Grafana + Loki | latest |
-| **CI/CD** | GitHub Actions | latest |
+# 4. Конкретные детали(предположительно)
 
-# 4. Конкретные детали и возможные приемы 
-
-### 4.1 Предположительная структура чанков
-
-```
-{
-  "chunk_id": "tg_12345_3",
-  "source": {
-    "type": "telegram",
-    "name": "SmartTherm Chat",
-    "message_ids": [12345, 12346, 12350],
-    "url": null
-  },
-  "raw_messages"(для валидации): [
-    "Периодически тут возникают вопросы про спонтанные перезагрузки контроллера...",
-    "Дроссель последовательно и электролит параллельно (из старого компьютерного БП выпаял)..."
-  ]
-  "content": {
-    "summary": "Контроллер не видит котёл через OpenTherm",
-    "text": "При подключении котла Navien через OpenTherm контроллер не получает статус...",
-    "key_facts": [
-      "Ошибка возникает при неправильной распиновке",
-      "Нужно проверить контакты OT1 и OT2",
-      "Некоторые котлы требуют инверсию"
-    ]
-  },
-  "metadata": {
-    "type": "troubleshooting",
-    "tags": ["opentherm", "navien", "connection"],
-    "language": "ru"
-  },
-  "versioning": {
-    "min_version": "1.0.0",
-    "max_version": null,
-    "explicit_version": false
-  },
-  "quality": {
-    "confidence": 0.9,
-    "verified": false
-  }
-}
-```
-
-**Для кода:**
+### 4.1 **Чанки для кода:**
 ```
 {
   "chunk_id": "code_wifi_config_1",
@@ -237,7 +177,7 @@
 }
 ```
 
-### 4.3 Возможно несколько стилей генерации
+### 4.3 Несколько стилей генерации
 ```
 "style": [
   "short_answer",
@@ -247,6 +187,10 @@
 ]
 ```
 
-## 5. Примечания 
-
-Llama 3.1 Instruct автоматически добавляет <|begin_of_text|> в начало ответа модели. Это поведение вшито в tokenizer.
+## 5. ПРАВИЛА:
+- `configs/default.yaml` — ЕДИНСТВЕННОЕ место для дефолтов
+- `utils/config.py` - Использование параметров из `default.yaml`
+- Везде должна использоваться LLM из `default.yaml`, если не передано конкретное название.
+- Всё запускать в виртуальной среде
+- Не менять data/raw
+- `src/llm/` реализует только общие функции для работы с LLM, которые в дальнейшем будут применяться для инференса.

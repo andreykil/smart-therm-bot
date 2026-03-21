@@ -15,11 +15,50 @@ rag:
 # LLM настройки
 llm:
   provider: "local"  # local, ollama, vllm
-  model: "llama-3.1-8b-instruct"
-  quantization: "Q5_K_M"  # Q4_K_M, Q5_K_M, Q6_K, Q8_0
-  temperature: 0.7
-  max_tokens: 512
+
+  # ДЕФОЛТНАЯ LLM для обработки чата
+  # model: "vikhr-nemo-12b-instruct-r"
+  model: "vikhr-llama-3.1-8b-instruct-r"
+  quantization: "Q4_K_M"  # Q4_K_M, Q5_K_M, Q6_K, Q8_0
+
+  temperature: 0.3  # Для детерминированных ответов (RAG, чанки)
+  max_tokens: 2048
   context_size: 8192
+  
+  # Оптимизация для Apple Silicon (M2 Max)
+  n_gpu_layers: -1  # -1 = все слои на GPU, 0 = CPU only
+  n_batch: 2048  # Размер батча для inference
+
+  # Параметры для этапов обработки
+  stage1:
+    temperature: 0.5
+    max_tokens: 1000
+  stage2:
+    temperature: 0.1
+    max_tokens: 50
+  stage3:
+    temperature: 0.5
+    max_tokens: 2048
+
+# Параметры обработки чата
+chat_processing:
+  # Размер группы и перекрытие для Этапа 1
+  group_size: 50
+  overlap_size: 5
+  
+  # Этап 0: Фильтрация
+  min_message_length: 10
+  stop_words:
+    - "спасибо"
+    - "ок"
+    - "понял"
+    - "благодарю"
+    - "+"
+    - "да"
+    - "спс"
+    - "круто"
+    - "супер"
+    - "хорошо"
 
 # Bot настройки
 bot:

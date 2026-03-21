@@ -1,7 +1,17 @@
 #!/usr/bin/env python3
 """
-Интерактивный чат с Llama 3.1 8B Instruct
-Тестирование модели на Apple Silicon (M2 Max)
+Универсальный интерактивный чат с LLM
+
+Поддерживает все модели из реестра:
+- Llama 3.1 8B
+- Vikhr-Llama-3.1-8B-Instruct-R
+- Vikhr-Nemo-12B-Instruct-R
+- Qwen 2.5 7B
+
+Примеры:
+    python scripts/chat.py --model vikhr-nemo-12b-instruct-r
+    python scripts/chat.py --model llama-3.1-8b-instruct --context 16384
+    python scripts/chat.py --prompt "Как подключить WiFi?" --model vikhr-llama-3.1-8b-instruct-r
 """
 
 import argparse
@@ -12,17 +22,15 @@ from typing import Optional
 # Добавить src в path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.llm.llama_client import LlamaClient
+from src.llm import create_llm_engine, LLMEngine
+from src.llm.registry import get_model, get_recommended_quantization
+from src.utils.chat_format import format_llama_chat_prompt, clean_response_text
 
 
 class ChatSession:
     """Сессия чата с моделью"""
     
-    def __init__(
-        self,
-        client: LlamaClient,
-        system_prompt: str = "Ты — полезный ассистент SmartTherm. Отвечай на вопросы по контроллерам SmartTherm, OpenTherm, ESP8266/ESP32. Отвечай подробно, технически грамотно, на русском языке."
-    ):
+    def __init__(self, client: LLMEngine, system_prompt: str):
         self.client = client
         self.system_prompt = system_prompt
         self.messages = [
@@ -34,15 +42,22 @@ class ChatSession:
         """Отправить сообщение и получить ответ"""
         self.messages.append({"role": "user", "content": user_message})
 
-        response = self.client.chat(
-            messages=self.messages,
+        # Форматирование промпта для Llama 3.1
+        prompt = format_llama_chat_prompt(self.messages)
+
+        response = self.client.generate(
+            prompt=prompt,
             max_tokens=max_tokens,
-            temperature=temperature
+            temperature=temperature,
+            stop=["<|eot_id|>"]
         )
-        
+
+        # Очистка от специальных токенов (полный ответ, strip=True)
+        response = clean_response_text(response, strip_spaces=True)
+
         self.messages.append({"role": "assistant", "content": response})
         self.history.append({"user": user_message, "assistant": response})
-        
+
         return response
     
     def clear(self):
@@ -58,21 +73,23 @@ class ChatSession:
         print(f"💾 История сохранена: {filepath}")
 
 
-def interactive_chat(client: LlamaClient, system_prompt: str, max_tokens: int = 1024):
+def interactive_chat(client: LLMEngine, system_prompt: str, max_tokens: int = 1024):
     """Интерактивный режим чата"""
     session = ChatSession(client, system_prompt)
     
-    print("\n" + "=" * 60)
-    print("🦙 Llama 3.1 8B Instruct — Интерактивный чат")
-    print("=" * 60)
-    print(f"Системный промпт: {system_prompt[:80]}...")
+    model_info = get_model(client.model_id)
+    
+    print("\n" + "=" * 70)
+    print(f"💬 {model_info['display_name'] if model_info else client.model_id} — Интерактивный чат")
+    print("=" * 70)
+    print(f"Системный промпт: {system_prompt[:70]}...")
     print()
     print("Команды:")
     print("  /clear     — очистить историю")
     print("  /save      — сохранить историю")
     print("  /stats     — показать статистику")
     print("  /exit      — выйти")
-    print("=" * 60)
+    print("=" * 70)
     print()
     
     while True:
@@ -107,40 +124,40 @@ def interactive_chat(client: LlamaClient, system_prompt: str, max_tokens: int = 
                 continue
             
             # Генерация ответа
-            print("\n🤖 Llama: ", end="", flush=True)
-            
-            # Добавляем сообщение пользователя в историю
-            session.messages.append({"role": "user", "content": user_input})
-            
-            # Используем chat_stream для потокового вывода
+            print("\n🤖 Модель: ", end="", flush=True)
+
+            # Форматирование промпта для Llama 3.1
+            prompt = format_llama_chat_prompt(session.messages)
+
+            # Используем generate_stream для потокового вывода
             response = ""
+            first_token = True
             try:
-                for token in session.client.chat_stream(
-                    messages=session.messages,
+                for token in session.client.generate_stream(
+                    prompt=prompt,
                     max_tokens=max_tokens,
-                    temperature=0.7
+                    temperature=0.7,
+                    stop=["<|eot_id|>"]
                 ):
-                    print(token, end="", flush=True)
-                    response += token
+                    # Очистка от специальных токенов (только первый токен)
+                    if first_token:
+                        token = clean_response_text(token, strip_spaces=True)
+                        first_token = False
+                    else:
+                        token = clean_response_text(token, strip_spaces=False)
+                    
+                    if token:
+                        print(token, end="", flush=True)
+                        response += token
             except Exception as e:
                 print(f"\n❌ Ошибка генерации: {e}")
-                # Убираем последнее сообщение при ошибке
                 session.messages.pop()
                 continue
-            
-            # Добавляем ответ ассистента в историю
-            # Очистить ответ от <|begin_of_text|> и служебных токенов
-            response = response.strip()
-            if response.startswith("<|begin_of_text|>"):
-                response = response[len("<|begin_of_text|>"):]
-            if response.startswith("<|start_header_id|>"):
-                # Убрать возможный заголовок ассистента
-                response = response.split("<|eot_id|>", 1)[-1].strip() if "<|eot_id|>" in response else response
-            
+
             session.messages.append({"role": "assistant", "content": response})
             session.history.append({"user": user_input, "assistant": response})
             
-            print()  # Новая строка после ответа
+            print()
             print()
             
         except KeyboardInterrupt:
@@ -151,21 +168,21 @@ def interactive_chat(client: LlamaClient, system_prompt: str, max_tokens: int = 
             continue
 
 
-def single_prompt(client: LlamaClient, prompt: str, output_file: Optional[str] = None):
+def single_prompt_mode(client: LLMEngine, prompt: str, output_file: Optional[str] = None, max_tokens: int = 1024):
     """Одиночный промпт (не интерактивный)"""
     response = client.generate(
         prompt=prompt,
-        max_tokens=512,
+        max_tokens=max_tokens,
         temperature=0.7
     )
     
-    print("\n" + "=" * 60)
+    print("\n" + "=" * 70)
     print("📝 Запрос:")
     print(prompt)
     print()
     print("🤖 Ответ:")
     print(response)
-    print("=" * 60)
+    print("=" * 70)
     
     if output_file:
         with open(output_file, 'w', encoding='utf-8') as f:
@@ -175,14 +192,25 @@ def single_prompt(client: LlamaClient, prompt: str, output_file: Optional[str] =
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Тестирование Llama 3.1 8B Instruct"
+        description="Интерактивный чат с LLM моделями",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Примеры:
+  %(prog)s --model vikhr-nemo-12b-instruct-r
+  %(prog)s --model llama-3.1-8b-instruct --context 16384
+  %(prog)s --model vikhr-llama-3.1-8b-instruct-r --prompt "Как прошить?"
+        """
+    )
+    parser.add_argument(
+        "--model", "-m",
+        type=str,
+        required=False,
+        help="ID модели (например, vikhr-nemo-12b-instruct-r)"
     )
     parser.add_argument(
         "--quantization", "-q",
         type=str,
-        default="Q5_K_M",
-        choices=["Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
-        help="Уровень квантования"
+        help="Уровень квантования (по умолчанию recommended)"
     )
     parser.add_argument(
         "--context", "-c",
@@ -191,7 +219,7 @@ def main():
         help="Размер контекста (по умолчанию: 8192)"
     )
     parser.add_argument(
-        "--max-tokens", "-m",
+        "--max-tokens", "-t",
         type=int,
         default=1024,
         help="Максимум токенов на ответ (по умолчанию: 1024)"
@@ -219,28 +247,42 @@ def main():
     )
     
     args = parser.parse_args()
+
+    # Загрузить конфиг для получения дефолтной модели
+    from src.utils.config import Config
+    config = Config.load()
+    llm_config = config.llm
     
-    # Инициализация клиента
-    client = LlamaClient(
-        quantization=args.quantization,
-        n_ctx=args.context,
-        verbose=args.verbose
-    )
+    # Определить модель (аргумент или дефолтная из конфига)
+    # None означает использование модели из конфига
+    model_id = args.model or llm_config.get("model") or "vikhr-nemo-12b-instruct-r"
+    quantization = args.quantization or llm_config.get("quantization") or "Q8_0"
     
-    # Проверка наличия модели
-    if not client.model_exists():
-        print(f"❌ Модель не найдена: {client.get_model_path()}")
+    from src.llm.registry import get_model_file_path
+    filename = get_model_file_path(model_id, quantization)
+    model_path = config.models_dir_path / filename
+    
+    if not model_path.exists():
+        print(f"❌ Модель не найдена: {model_path}")
         print()
         print("Скачайте модель:")
-        print(f"   python scripts/download_model.py --quantization {args.quantization}")
+        print(f"   python scripts/download_model.py --model {model_id}")
         print()
-        print("Или выберите другое квантование:")
+        print("Или выберите другую модель:")
         print("   python scripts/download_model.py --list")
         sys.exit(1)
     
-    # Загрузка модели
-    print(f"🔄 Загрузка модели {args.quantization}...")
+    # Создание движка
+    print(f"🔄 Загрузка модели {model_id} ({quantization})...")
+    
     try:
+        client = create_llm_engine(
+            provider="local",           # type: ignore
+            model_id=model_id,          # type: ignore
+            quantization=quantization,  # type: ignore
+            n_ctx=args.context,         # type: ignore
+            verbose=args.verbose
+        )
         client.load()
     except Exception as e:
         print(f"❌ Ошибка загрузки: {e}")
@@ -251,7 +293,7 @@ def main():
     
     # Режим работы
     if args.prompt:
-        single_prompt(client, args.prompt, args.output)
+        single_prompt_mode(client, args.prompt, args.output, args.max_tokens)
     else:
         interactive_chat(client, args.system, args.max_tokens)
 
