@@ -54,6 +54,42 @@ process-stage3: ## Этап 3: Создание чанков
 	@echo "🔄 Этап 3: Чанки..."
 	python scripts/process_chat_cli.py stage3
 
+# ==============================================================================
+# ТЕСТОВЫЕ ДАННЫЕ (обрезанные)
+# ==============================================================================
+
+truncate: ## Обрезать сообщения до 250 (для тестов)
+	@echo "✂️  Обрезка сообщений до 250..."
+	python scripts/truncate_messages.py --limit 250
+
+truncate-n: ## Обрезать сообщения до N (make truncate-n N=100)
+	@echo "✂️  Обрезка сообщений до $(N)..."
+	python scripts/truncate_messages.py --limit $(N)
+
+test-stage1-full: ## Тест Этапа 1 на обрезанных данных
+	@echo "🧪 Тест Этапа 1 (обрезанные данные)..."
+	python scripts/process_chat_cli.py stage1 \
+		--input-path data/processed/chat/test/messages_test.json \
+		--output-path data/processed/chat/test/threads_test.json
+
+test-stage2-full: test-stage1-full ## Тест Этапа 2 на обрезанных данных
+	@echo "🧪 Тест Этапа 2 (обрезанные данные)..."
+	python scripts/process_chat_cli.py stage2 \
+		--input-path data/processed/chat/test/threads_test.json \
+		--output-path data/processed/chat/test/threads_deduped_test.json
+
+test-stage3-full: test-stage2-full ## Тест Этапа 3 на обрезанных данных
+	@echo "🧪 Тест Этапа 3 (обрезанные данные)..."
+	python scripts/process_chat_cli.py stage3 \
+		--threads-path data/processed/chat/test/threads_deduped_test.json \
+		--messages-path data/processed/chat/test/messages_test.json \
+		--output-path data/processed/chat/test/chunks_rag_test.jsonl \
+		--sample-size 5
+
+test-all: truncate test-stage1-full test-stage2-full test-stage3-full ## Полный тест на обрезанных данных (truncate + stage1,2,3)
+	@echo "✅ Полный тест завершён"
+	@echo "Результаты в: data/processed/chat/test/"
+
 validate: ## Валидировать результаты обработки
 	@echo "Валидация..."
 	python scripts/validate_stages.py

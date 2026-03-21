@@ -7,10 +7,9 @@
 import json
 import logging
 from pathlib import Path
-from typing import Optional
 
 from .models import RAGChunk, Thread
-from ..llm import LLMEngine 
+from ..llm import LLMEngine
 from ..llm.factory import create_llm_engine
 from ..utils.config import Config
 
@@ -97,7 +96,7 @@ def create_chunk_from_thread(
     llm: LLMEngine,
     max_tokens: int = 2048,
     temperature: float = 0.5
-) -> Optional[RAGChunk]:
+) -> RAGChunk | None:
     """
     Создать RAG чанк из ветки
 
@@ -207,7 +206,10 @@ def create_chunk_from_thread(
 
 def run_stage3(
     config: Config,
-    llm: Optional[LLMEngine] = None,
+    llm: LLMEngine | None = None,
+    threads_path: Path | None = None,
+    messages_path: Path | None = None,
+    output_path: Path | None = None,
     sample_size: int = 5
 ) -> dict:
     """
@@ -216,6 +218,9 @@ def run_stage3(
     Args:
         config: Конфигурация
         llm: LLM движок
+        threads_path: Входной файл с ветками (по умолчанию: processed/chat/threads_deduped.json)
+        messages_path: Входной файл с сообщениями (по умолчанию: processed/chat/messages_filtered.json)
+        output_path: Выходной файл (по умолчанию: processed/chat/chunks_rag.jsonl)
         sample_size: Размер выборки для валидации
     """
     logger.info("=" * 60)
@@ -223,15 +228,17 @@ def run_stage3(
     logger.info("=" * 60)
 
     # Загрузка дедуплицированных веток
-    threads_path = config.processed_dir / "chat" / "threads_deduped.json"
+    threads_path = threads_path or config.processed_dir / "chat" / "threads_deduped.json"
+    
     logger.info(f"Загрузка веток из {threads_path}")
     threads = load_deduped_threads(threads_path)
     logger.info(f"Загружено {len(threads)} веток")
 
     # Загрузка сообщений
-    filtered_path = config.processed_dir / "chat" / "messages_filtered.json"
-    logger.info(f"Загрузка сообщений из {filtered_path}")
-    messages = load_filtered_messages(filtered_path)
+    messages_path = messages_path or config.processed_dir / "chat" / "messages_filtered.json"
+    
+    logger.info(f"Загрузка сообщений из {messages_path}")
+    messages = load_filtered_messages(messages_path)
     logger.info(f"Загружено {len(messages)} сообщений")
 
     # Инициализация LLM
@@ -286,10 +293,11 @@ def run_stage3(
             logger.info(f"Прогресс: {i}/{len(threads)} веток обработано")
 
     # Сохранение результатов (JSONL)
-    chunks_path = config.processed_dir / "chat" / "chunks_rag.jsonl"
-    logger.info(f"Сохранение {len(chunks)} чанков в {chunks_path}")
+    output_path = output_path or config.processed_dir / "chat" / "chunks_rag.jsonl"
+    
+    logger.info(f"Сохранение {len(chunks)} чанков в {output_path}")
 
-    with open(chunks_path, "w", encoding="utf-8") as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         for chunk in chunks:
             f.write(chunk.to_jsonl() + "\n")
 
@@ -298,7 +306,7 @@ def run_stage3(
         import random
         sample = random.sample(chunks, min(sample_size, len(chunks)))
 
-        sample_path = chunks_path.parent / "chunks_sample.json"
+        sample_path = output_path.parent / "chunks_sample.json"
         with open(sample_path, "w", encoding="utf-8") as f:
             json.dump(
                 [c.model_dump() for c in sample],

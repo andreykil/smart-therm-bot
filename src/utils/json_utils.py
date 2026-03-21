@@ -4,6 +4,10 @@
 Функции для извлечения и обработки JSON из текста.
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def extract_json_from_text(text: str) -> str:
     """
@@ -20,6 +24,7 @@ def extract_json_from_text(text: str) -> str:
     # Найти начало JSON
     start = text.find("{")
     if start == -1:
+        logger.warning("JSON не найден (нет открывающей скобки)")
         return text
 
     # Считаем скобки чтобы найти правильный конец JSON
@@ -49,7 +54,18 @@ def extract_json_from_text(text: str) -> str:
             depth -= 1
             if depth == 0:
                 # Найден конец JSON - возвращаем только JSON
-                return text[start:i+1]
+                json_str = text[start:i+1]
+                
+                # Проверка: если после JSON есть текст, логируем
+                remaining = text[i+1:].strip()
+                if remaining:
+                    logger.debug(f"После JSON найдено: {remaining[:50]}...")
+                
+                return json_str
 
-    # Если не нашли закрывающую скобку, возвращаем как есть
+    # Если не нашли закрывающую скобку, логируем ошибку
+    logger.warning(f"Не найдена закрывающая скобка JSON. Depth={depth}")
+    logger.warning(f"Текст: {text[:200]}...")
+    
+    # Пытаемся вернуть как есть
     return text

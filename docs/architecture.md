@@ -33,7 +33,12 @@ smart-therm-bot/
 │   │       ├── threads.json              # Этап 1
 │   │       ├── threads_deduped.json      # Этап 2
 │   │       ├── chunks_rag.jsonl          # Этап 3
-│   │       └── chunks_sample.json        # Выборка для валидации
+│   │       ├── chunks_sample.json        # Выборка для валидации
+│   │       └── test/                     # Тестовые данные (обрезанные)
+│   │           ├── messages_test.json
+│   │           ├── threads_test.json
+│   │           ├── threads_deduped_test.json
+│   │           └── chunks_rag_test.jsonl
 │   │
 │   └── indices/                    # Векторные индексы
 │       ├── faiss/
@@ -67,6 +72,7 @@ smart-therm-bot/
 │   ├── download_model.py           # Скачивание моделей
 │   ├── chat.py                     # Интерактивный чат с LLM
 │   ├── process_chat_cli.py         # CLI для всех этапов обработки
+│   ├── truncate_messages.py        # Обрезка сообщений для тестов
 │   ├── test_stage1.py              # Тест Этапа 1 (отладка)
 │   └── validate_stages.py          # Валидация результатов
 │
@@ -191,6 +197,11 @@ make process-stage3      # Создание RAG чанков
 # Тест Этапа 1 (50 сообщений)
 make test-stage1
 
+# Тестирование на обрезанных данных (250 сообщений)
+make truncate            # Обрезать сообщения до 250
+make truncate-n N=100    # Обрезать до N сообщений
+make test-all            # Полный тест: truncate + stage1 + stage2 + stage3
+
 # Валидация
 make validate            # Проверка результатов
 ```
@@ -241,6 +252,19 @@ make help
   Вход:  threads_deduped.json
   Выход: data/processed/chat/chunks_rag.jsonl
   Логика: Создание чанков {topic, knowledge, metadata}
+```
+
+### Тестирование на обрезанных данных
+
+```
+truncate: Обрезка сообщений
+  Вход:  data/processed/chat/messages_filtered.json
+  Выход: data/processed/chat/test/messages_test.json (250 сообщений)
+
+test-all: Полный тест
+  messages_test.json → stage1 → threads_test.json
+  threads_test.json → stage2 → threads_deduped_test.json
+  threads_deduped_test.json + messages_test.json → stage3 → chunks_rag_test.jsonl
 ```
 
 ### Формат чанка (JSONL)

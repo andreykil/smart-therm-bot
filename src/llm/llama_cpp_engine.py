@@ -139,7 +139,8 @@ class LlamaCppEngine(LLMEngine):
             n_gpu_layers=self.n_gpu_layers,  # -1 = все слои на GPU
             verbose=self.verbose,
             use_mmap=True,  # Memory mapping для экономии RAM
-            use_mlock=False  # Не блокировать в RAM
+            use_mlock=False,  # Не блокировать в RAM
+            add_bos_token=False  # Не добавлять BOS автоматически (используем chat template)
         )
         
         self._loaded = True
@@ -171,6 +172,7 @@ class LlamaCppEngine(LLMEngine):
         # Stop sequences — только если явно переданы
         stop_sequences = stop if stop else []
 
+        # BOS уже добавлен в промпт (chat template)
         response = self.model(
             prompt,
             max_tokens=max_tokens,
@@ -193,10 +195,11 @@ class LlamaCppEngine(LLMEngine):
         """Сгенерировать ответ с потоковой отдачей"""
         if not self._loaded:
             self.load()
-        
+
         if self.model is None:
             raise RuntimeError("Модель не загружена")
-        
+
+        # BOS уже добавлен в промпт (chat template)
         for token in self.model(
             prompt,
             max_tokens=max_tokens,

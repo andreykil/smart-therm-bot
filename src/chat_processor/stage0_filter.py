@@ -12,7 +12,6 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Optional
 
 from .models import FilteredMessage, TelegramChat, TelegramMessage
 from ..utils.config import Config
@@ -62,7 +61,7 @@ def is_emoji_only(text: str) -> bool:
     return bool(emoji_pattern.fullmatch(text))
 
 
-def is_flood_message(text: str, stop_words: Optional[list] = None) -> bool:
+def is_flood_message(text: str, stop_words: list | None = None) -> bool:
     """Проверить на флуд (короткие благодарности и т.д.)"""
     if stop_words is None:
         stop_words = []
@@ -89,7 +88,7 @@ def filter_messages(
     input_path: Path,
     output_path: Path,
     min_message_length: int = 10,
-    stop_words: Optional[list] = None
+    stop_words: list | None = None
 ) -> dict:
     """
     Фильтрация сообщений
@@ -213,17 +212,32 @@ def filter_messages(
     return stats
 
 
-def run_stage0(config: Config) -> dict:
-    """Запустить Этап 0"""
+def run_stage0(
+    config: Config,
+    input_path: Path | None = None,
+    output_path: Path | None = None
+) -> dict:
+    """
+    Запустить Этап 0
+
+    Args:
+        config: Конфигурация
+        input_path: Входной файл (по умолчанию: raw/chat_history.json)
+        output_path: Выходной файл (по умолчанию: processed/chat/messages_filtered.json)
+    """
     logger.info("=" * 60)
     logger.info("ЭТАП 0: Фильтрация шума")
     logger.info("=" * 60)
 
     chat_cfg = config.chat_processing
 
+    # Используем переданные пути или дефолтные
+    input_path = input_path or config.raw_dir / "chat_history.json"
+    output_path = output_path or config.processed_dir / "chat" / "messages_filtered.json"
+
     stats = filter_messages(
-        config.raw_dir / "chat_history.json",
-        config.processed_dir / "chat" / "messages_filtered.json",
+        input_path,
+        output_path,
         min_message_length=chat_cfg.get("min_message_length") or 10,
         stop_words=chat_cfg.get("stop_words")
     )

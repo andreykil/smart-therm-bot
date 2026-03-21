@@ -65,7 +65,11 @@ def get_config(args) -> Config:
 def cmd_stage0(args):
     """Этап 0: Фильтрация шума"""
     config = get_config(args)
-    run_stage0(config)
+    
+    input_path = Path(args.input_path) if hasattr(args, 'input_path') and args.input_path else None
+    output_path = Path(args.output_path) if hasattr(args, 'output_path') and args.output_path else None
+    
+    run_stage0(config, input_path=input_path, output_path=output_path)
 
 
 def cmd_stage1(args):
@@ -85,7 +89,12 @@ def cmd_stage1(args):
         sys.exit(1)
 
     llm.load()
-    run_stage1(config, llm)
+    
+    input_path = Path(args.input_path) if hasattr(args, 'input_path') and args.input_path else None
+    output_path = Path(args.output_path) if hasattr(args, 'output_path') and args.output_path else None
+    debug = args.debug if hasattr(args, 'debug') else False
+    
+    run_stage1(config, llm, input_path=input_path, output_path=output_path, debug=debug)
 
 
 def cmd_stage2(args):
@@ -105,7 +114,11 @@ def cmd_stage2(args):
         sys.exit(1)
 
     llm.load()
-    run_stage2(config, llm)
+    
+    input_path = Path(args.input_path) if hasattr(args, 'input_path') and args.input_path else None
+    output_path = Path(args.output_path) if hasattr(args, 'output_path') and args.output_path else None
+    
+    run_stage2(config, llm, input_path=input_path, output_path=output_path)
 
 
 def cmd_stage3(args):
@@ -125,7 +138,19 @@ def cmd_stage3(args):
         sys.exit(1)
 
     llm.load()
-    run_stage3(config, llm, sample_size=args.sample_size if hasattr(args, 'sample_size') else 5)
+    
+    threads_path = Path(args.threads_path) if hasattr(args, 'threads_path') and args.threads_path else None
+    messages_path = Path(args.messages_path) if hasattr(args, 'messages_path') and args.messages_path else None
+    output_path = Path(args.output_path) if hasattr(args, 'output_path') and args.output_path else None
+    
+    run_stage3(
+        config, 
+        llm, 
+        threads_path=threads_path, 
+        messages_path=messages_path, 
+        output_path=output_path,
+        sample_size=args.sample_size if hasattr(args, 'sample_size') else 5
+    )
 
 
 def cmd_all(args):
@@ -205,18 +230,28 @@ def main():
 
     # Этап 0
     parser_stage0 = subparsers.add_parser("stage0", help="Фильтрация шума", parents=[common_args])
+    parser_stage0.add_argument("--input-path", type=str, default=None, help="Входной файл")
+    parser_stage0.add_argument("--output-path", type=str, default=None, help="Выходной файл")
     parser_stage0.set_defaults(func=cmd_stage0)
 
     # Этап 1
     parser_stage1 = subparsers.add_parser("stage1", help="Выделение веток", parents=[common_args])
+    parser_stage1.add_argument("--input-path", type=str, default=None, help="Входной файл")
+    parser_stage1.add_argument("--output-path", type=str, default=None, help="Выходной файл")
+    parser_stage1.add_argument("--debug", action="store_true", help="Debug режим: сырой ответ LLM")
     parser_stage1.set_defaults(func=cmd_stage1)
 
     # Этап 2
     parser_stage2 = subparsers.add_parser("stage2", help="Дедупликация веток", parents=[common_args])
+    parser_stage2.add_argument("--input-path", type=str, default=None, help="Входной файл")
+    parser_stage2.add_argument("--output-path", type=str, default=None, help="Выходной файл")
     parser_stage2.set_defaults(func=cmd_stage2)
 
     # Этап 3
     parser_stage3 = subparsers.add_parser("stage3", help="Создание RAG чанков", parents=[common_args])
+    parser_stage3.add_argument("--threads-path", type=str, default=None, help="Входной файл с ветками")
+    parser_stage3.add_argument("--messages-path", type=str, default=None, help="Входной файл с сообщениями")
+    parser_stage3.add_argument("--output-path", type=str, default=None, help="Выходной файл")
     parser_stage3.add_argument("--sample-size", type=int, default=5, help="Размер выборки")
     parser_stage3.set_defaults(func=cmd_stage3)
 

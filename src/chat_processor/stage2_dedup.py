@@ -7,7 +7,6 @@
 import json
 import logging
 from pathlib import Path
-from typing import Optional
 
 from .models import Thread
 from ..llm import LLMEngine, create_llm_engine
@@ -197,7 +196,9 @@ def deduplicate_threads(
 
 def run_stage2(
     config: Config,
-    llm: Optional[LLMEngine] = None
+    llm: LLMEngine | None = None,
+    input_path: Path | None = None,
+    output_path: Path | None = None
 ) -> dict:
     """
     Запустить Этап 2
@@ -205,15 +206,18 @@ def run_stage2(
     Args:
         config: Конфигурация
         llm: LLM движок
+        input_path: Входной файл (по умолчанию: processed/chat/threads.json)
+        output_path: Выходной файл (по умолчанию: processed/chat/threads_deduped.json)
     """
     logger.info("=" * 60)
     logger.info("ЭТАП 2: Дедупликация веток")
     logger.info("=" * 60)
 
     # Загрузка веток
-    threads_path = config.processed_dir / "chat" / "threads.json"
-    logger.info(f"Загрузка веток из {threads_path}")
-    threads = load_threads(threads_path)
+    input_path = input_path or config.processed_dir / "chat" / "threads.json"
+    
+    logger.info(f"Загрузка веток из {input_path}")
+    threads = load_threads(input_path)
     logger.info(f"Загружено {len(threads)} веток")
 
     # Инициализация LLM (если нужен)
@@ -247,8 +251,9 @@ def run_stage2(
     )
 
     # Сохранение результатов
-    threads_deduped_path = config.processed_dir / "chat" / "threads_deduped.json"
-    logger.info(f"Сохранение {len(deduped_threads)} веток в {threads_deduped_path}")
+    output_path = output_path or config.processed_dir / "chat" / "threads_deduped.json"
+    
+    logger.info(f"Сохранение {len(deduped_threads)} веток в {output_path}")
 
     output_data = {
         "total_original": len(threads),
@@ -257,7 +262,7 @@ def run_stage2(
         "threads": [t.model_dump() for t in deduped_threads]
     }
 
-    with open(threads_deduped_path, "w", encoding="utf-8") as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         json.dump(output_data, f, ensure_ascii=False, indent=2)
 
     stats = {

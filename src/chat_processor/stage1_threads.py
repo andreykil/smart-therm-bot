@@ -9,7 +9,6 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Optional
 
 from .models import FilteredMessage, Thread, ThreadsResult
 from ..llm import LLMEngine
@@ -19,8 +18,13 @@ from ..utils.json_utils import extract_json_from_text
 logger = logging.getLogger(__name__)
 
 # Промпт для выделения веток
-THREAD_EXTRACTION_PROMPT = """
+THREAD_EXTRACTION_PROMPT = """<|start_header_id|>system<|end_header_id|>
+
 Ты анализируешь историю чата технической поддержки SmartTherm.
+Твоя задача — выделить независимые ветки обсуждения и вернуть JSON строгой структуры.
+Никаких пояснений, только JSON.
+
+<|eot_id|><|start_header_id|>user<|end_header_id|>
 
 ВХОД: {num_messages} сообщений за период {date_range}
 
@@ -28,28 +32,19 @@ THREAD_EXTRACTION_PROMPT = """
 
 Ветка — это:
 1. Вопрос пользователя + ответы (разработчика или других пользователей)
-2. Объявление разработчика + вопросы/комментарии
-3. Обсуждение одной технической проблемы
-4. Отчёт пользователя об опыте + уточнения
-5. Ссылка на ресурс + обсуждение этого ресурса
+2. Объявление разработчика(Evgen) + вопросы/комментарии
+3. Обсуждение одной теме
+4. Сообщение пользователя о своем опыте
 
 КРИТЕРИИ разделения на разные ветки:
-- Новая тема (другой вопрос/проблема/котёл)
-- Прошло >12 часов между сообщениями без обсуждения
+- Новая тема (другой вопрос/проблема/котел)
 - Разные участники без семантической связи
-- Смена контекста (например, с прошивки на подключение)
 
 КРИТЕРИИ объединения в одну ветку:
-- Ответы на один вопрос (даже с интервалом)
+- Ответы на один вопрос
 - Уточнения проблемы тем же пользователем
 - Цепочка reply_to_message_id (явная связь между сообщениями)
-- Обсуждение одного компонента (WiFi, OpenTherm, датчики)
-- Ссылка + комментарии к ней
-
-ОБРАТИ ВНИМАНИЕ НА reply_to_message_id:
-- Если сообщение имеет reply_to_message_id, оно продолжает ветку того сообщения
-- Ответы разработчика (Evgen) часто имеют reply_to_message_id на вопрос пользователя
-- Используй reply_to_message_id для точного определения связей
+- Обсуждение одной темы
 
 ВЕРНИ JSON СТРОГОЙ СТРУКТУРЫ:
 {{
@@ -61,14 +56,14 @@ THREAD_EXTRACTION_PROMPT = """
       "start_date": "2024-01-15",
       "end_date": "2024-01-17",
       "has_solution": true,
-      "summary": "Пользователь спрашивал про X. Разработчик ответил Y. Проблема решена через Z."
+      "summary": "Краткое содержание обсуждения"
     }}
   ]
 }}
 
 ТРЕБОВАНИЯ:
 - topic: 3-5 слов, без артиклей
-- message_ids: все ID сообщений ветки (отсортированы)
+- message_ids: все ID сообщений ветки (отсортированы, без бесполезных сообщений)
 - has_solution: true если есть ответ от Evgen или подтверждение решения
 - summary: 1-3 предложения, конкретно
 
@@ -76,14 +71,15 @@ THREAD_EXTRACTION_PROMPT = """
 1. ВЕРНИ ТОЛЬКО JSON - никаких пояснений до или после
 2. НЕ используй markdown (никаких ```json)
 3. ЗАКОНЧИ ответ сразу после закрывающей }}
-4. ЕСЛИ не можешь выделить ветки, верни пустой список: {{"threads": []}}
+4. ДАЖЕ ОДНО полезное, подробное, информативное сообщение выделяй как ветку
 5. НЕ пиши "Обратите внимание", "Пожалуйста", "С уважением" и т.д.
 6. ДАЖЕ если сообщения это просто ссылки - группируй их по теме
+7. Игнорируй бесполезные сообщения, даже если это сообщение с reply_to_message_id
+8. ЕСЛИ не можешь выделить ветки, верни пустой список: {{"threads": []}}
 
 СООБЩЕНИЯ ДЛЯ АНАЛИЗА:
-{messages_json}
+{messages_json}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
 
-ТВОЙ ОТВЕТ (JSON):
 """
 
 
@@ -126,7 +122,8 @@ def extract_threads_from_group(
     group_number: int,
     llm: LLMEngine,
     config: Config,
-    max_tokens: int = 2048
+    max_tokens: int = 2048,
+    debug: bool = False
 ) -> ThreadsResult:
     """
     Выделить ветки из группы сообщений
@@ -137,6 +134,7 @@ def extract_threads_from_group(
         llm: LLM движок
         config: Конфигурация
         max_tokens: Максимум токенов на ответ
+        debug: Если True, выводить сырой ответ LLM без обрезания
     """
     # Подготовка сообщений для промпта
     messages_json = json.dumps(
@@ -168,25 +166,37 @@ def extract_threads_from_group(
     # Вызов LLM
     logger.info(f"Группа {group_number}: Запрос к LLM ({len(group)} сообщений)...")
 
-    # Stop sequences для JSON
-    stop_sequences = [
-        "\n\n",  # Двойной newline
-        "Объяснение",
-        "Примечание",
-        "Закрытие",
-        "В данном случае",
-        "Пожалуйста",
-        "Обратите внимание"
-    ]
-
     stage1_cfg = config.llm.get("stage1", {})
-    response = llm.generate(
-        prompt=prompt,
-        max_tokens=stage1_cfg.get("max_tokens") or 1000,
-        temperature=stage1_cfg.get("temperature") or 0.5,
-        top_p=0.9,
-        stop=stop_sequences
-    )
+    
+    if debug:
+        # Debug режим: без stop sequences, полный ответ
+        response = llm.generate(
+            prompt=prompt,
+            max_tokens=stage1_cfg.get("max_tokens") or 1000,
+            temperature=stage1_cfg.get("temperature") or 0.5,
+            top_p=0.9
+        )
+        print(f"\n{'='*60}")
+        print(f"ГРУППА {group_number} - СЫРОЙ ОТВЕТ LLM:")
+        print(f"{'='*60}")
+        print(response)
+        print(f"{'='*60}\n")
+    else:
+        # Обычный режим: stop sequences для JSON
+        stop_sequences = [
+            "<|eot_id|>",  # EOS токен Llama-3
+            "}\n\n",       # Закрывающая скобка + двойной newline
+            "}\n---",      # Закрывающая скобка + разделитель
+            "}}\n",        # Две закрывающие скобки + newline
+        ]
+
+        response = llm.generate(
+            prompt=prompt,
+            max_tokens=stage1_cfg.get("max_tokens") or 1000,
+            temperature=stage1_cfg.get("temperature") or 0.5,
+            top_p=0.9,
+            stop=stop_sequences
+        )
 
     # Парсинг ответа
     logger.info(f"Группа {group_number}: Парсинг ответа...")
@@ -241,7 +251,10 @@ def extract_threads_from_group(
 
 def run_stage1(
     config: Config,
-    llm: Optional[LLMEngine] = None
+    llm: LLMEngine | None = None,
+    input_path: Path | None = None,
+    output_path: Path | None = None,
+    debug: bool = False
 ) -> dict:
     """
     Запустить Этап 1
@@ -249,14 +262,19 @@ def run_stage1(
     Args:
         config: Конфигурация
         llm: LLM движок (если None, создаётся новый)
+        input_path: Входной файл (по умолчанию: processed/chat/messages_filtered.json)
+        output_path: Выходной файл (по умолчанию: processed/chat/threads.json)
+        debug: Если True, выводить сырые ответы LLM
     """
     logger.info("=" * 60)
     logger.info("ЭТАП 1: Выделение веток")
     logger.info("=" * 60)
 
     # Загрузка отфильтрованных сообщений
-    logger.info(f"Загрузка сообщений из {config.processed_dir / 'chat' / 'messages_filtered.json'}")
-    messages = load_filtered_messages(config.processed_dir / "chat" / "messages_filtered.json")
+    input_path = input_path or config.processed_dir / "chat" / "messages_filtered.json"
+    
+    logger.info(f"Загрузка сообщений из {input_path}")
+    messages = load_filtered_messages(input_path)
     logger.info(f"Загружено {len(messages)} сообщений")
 
     # Создание групп
@@ -306,7 +324,8 @@ def run_stage1(
             group_number=i,
             llm=llm,
             config=config,
-            max_tokens=config.llm.get("max_tokens") or 2048
+            max_tokens=config.llm.get("max_tokens") or 2048,
+            debug=debug
         )
 
         all_threads.extend(result.threads)
@@ -316,8 +335,9 @@ def run_stage1(
         stats["messages_covered"] += result.total_messages
 
     # Сохранение результатов
-    threads_path = config.processed_dir / "chat" / "threads.json"
-    logger.info(f"Сохранение {len(all_threads)} веток в {threads_path}")
+    output_path = output_path or config.processed_dir / "chat" / "threads.json"
+    
+    logger.info(f"Сохранение {len(all_threads)} веток в {output_path}")
 
     output_data = {
         "total_groups": stats["groups_processed"],
@@ -326,7 +346,7 @@ def run_stage1(
         "threads": [t.model_dump() for t in all_threads]
     }
 
-    with open(threads_path, "w", encoding="utf-8") as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         json.dump(output_data, f, ensure_ascii=False, indent=2)
 
     logger.info("Этап 1 завершён")
