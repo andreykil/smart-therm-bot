@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 def truncate_messages(
     input_path: Path,
     output_path: Path,
-    limit: int = 250
+    limit: int = 95
 ) -> dict:
     """
     Обрезать сообщения до заданного числа
@@ -48,16 +48,10 @@ def truncate_messages(
         truncated_messages = data["messages"][:limit]
         logger.info(f"Обрезка до {limit} сообщений")
 
-    # Создание выходного файла
+    # Создание выходного файла в формате stage1_filter.py
+    # Сохраняем только messages массив для совместимости
     output_data = {
-        "total_original": data.get("total_original", total_messages),
-        "total_filtered": len(truncated_messages),
-        "removed": data.get("removed", {}),
-        "saved_developer": data.get("saved_developer", 0),
-        "messages": truncated_messages,
-        "truncated": True,
-        "original_count": total_messages,
-        "limit": limit
+        "messages": truncated_messages
     }
 
     logger.info(f"Сохранение {len(truncated_messages)} сообщений в {output_path}")

@@ -38,16 +38,12 @@ process-all: ## Запустить все этапы обработки
 	@echo "Обработка чата (все этапы)..."
 	python scripts/process_chat_cli.py all
 
-process-stage0: ## Этап 0: Фильтрация шума
-	@echo "🔄 Этап 0: Фильтрация..."
-	python scripts/process_chat_cli.py stage0
-
-process-stage1: ## Этап 1: Выделение веток
-	@echo "🔄 Этап 1: Ветки..."
+process-stage1: ## Этап 1: Фильтрация шума
+	@echo "🔄 Этап 1: Фильтрация..."
 	python scripts/process_chat_cli.py stage1
 
-process-stage2: ## Этап 2: Дедупликация
-	@echo "🔄 Этап 2: Дедупликация..."
+process-stage2: ## Этап 2: Выделение веток
+	@echo "🔄 Этап 2: Ветки..."
 	python scripts/process_chat_cli.py stage2
 
 process-stage3: ## Этап 3: Создание чанков
@@ -58,35 +54,47 @@ process-stage3: ## Этап 3: Создание чанков
 # ТЕСТОВЫЕ ДАННЫЕ (обрезанные)
 # ==============================================================================
 
-truncate: ## Обрезать сообщения до 250 (для тестов)
-	@echo "✂️  Обрезка сообщений до 250..."
-	python scripts/truncate_messages.py --limit 250
+truncate: ## Обрезать сообщения до n слов
+	@echo "✂️  Обрезка сообщений..."
+	python scripts/truncate_messages.py --limit 95
 
 truncate-n: ## Обрезать сообщения до N (make truncate-n N=100)
 	@echo "✂️  Обрезка сообщений до $(N)..."
 	python scripts/truncate_messages.py --limit $(N)
 
-test-stage1-full: ## Тест Этапа 1 на обрезанных данных
-	@echo "🧪 Тест Этапа 1 (обрезанные данные)..."
-	python scripts/process_chat_cli.py stage1 \
+test-stage2: ## Тест Этапа 2 на обрезанных данных (с debug)
+	@echo "🧪 Тест Этапа 2 (обрезанные данные, debug)..."
+	python scripts/process_chat_cli.py stage2 \
+		--input-path data/processed/chat/test/messages_test.json \
+		--output-path data/processed/chat/test/threads_test.json \
+		--debug
+
+test-stage2-nodebug: ## Тест Этапа 2 на обрезанных данных (без debug)
+	@echo "🧪 Тест Этапа 2 (обрезанные данные)..."
+	python scripts/process_chat_cli.py stage2 \
 		--input-path data/processed/chat/test/messages_test.json \
 		--output-path data/processed/chat/test/threads_test.json
 
-test-stage2-full: test-stage1-full ## Тест Этапа 2 на обрезанных данных
-	@echo "🧪 Тест Этапа 2 (обрезанные данные)..."
-	python scripts/process_chat_cli.py stage2 \
-		--input-path data/processed/chat/test/threads_test.json \
-		--output-path data/processed/chat/test/threads_deduped_test.json
-
-test-stage3-full: test-stage2-full ## Тест Этапа 3 на обрезанных данных
-	@echo "🧪 Тест Этапа 3 (обрезанные данные)..."
+test-stage3: ## Тест Этапа 3 на готовых ветках (threads_test.json)
+	@echo "🧪 Тест Этапа 3 (готовые ветки)..."
 	python scripts/process_chat_cli.py stage3 \
-		--threads-path data/processed/chat/test/threads_deduped_test.json \
+		--threads-path data/processed/chat/test/threads_test.json \
 		--messages-path data/processed/chat/test/messages_test.json \
 		--output-path data/processed/chat/test/chunks_rag_test.jsonl \
 		--sample-size 5
 
-test-all: truncate test-stage1-full test-stage2-full test-stage3-full ## Полный тест на обрезанных данных (truncate + stage1,2,3)
+test-stage3-debug: ## Тест Этапа 3 с debug (сырой вывод LLM)
+	@echo "🧪 Тест Этапа 3 (debug)..."
+	python scripts/process_chat_cli.py stage3 \
+		--threads-path data/processed/chat/test/threads_test.json \
+		--messages-path data/processed/chat/test/messages_test.json \
+		--output-path data/processed/chat/test/chunks_rag_test.jsonl \
+		--debug
+
+test-stage3-full: test-stage2-nodebug test-stage3 ## Тест Этапа 3 на обрезанных данных (stage2 + stage3)
+	@echo "✅ Тест Этапа 3 завершён"
+
+test-all: truncate test-stage2-nodebug test-stage3 ## Полный тест на обрезанных данных (truncate + stage2 + stage3)
 	@echo "✅ Полный тест завершён"
 	@echo "Результаты в: data/processed/chat/test/"
 
@@ -94,8 +102,8 @@ validate: ## Валидировать результаты обработки
 	@echo "Валидация..."
 	python scripts/validate_stages.py
 
-test-stage1: ## Тест Этапа 1 (первая группа, 50 сообщений) (-- limit 5 для числа сообщений)
-	@echo "Тест Этапа 1..."
+test-stage2-debug: ## Тест Этапа 2 (debug, 50 сообщений)
+	@echo "Тест Этапа 2 (debug)..."
 	python scripts/test_stage1.py 
 
 # ==============================================================================

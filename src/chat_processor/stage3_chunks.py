@@ -12,12 +12,18 @@ from .models import RAGChunk, Thread
 from ..llm import LLMEngine
 from ..llm.factory import create_llm_engine
 from ..utils.config import Config
+from ..utils.json_utils import extract_json_from_text
 
 logger = logging.getLogger(__name__)
 
 # Промпт для создания чанка
-CHUNK_CREATION_PROMPT = """
-Ты создаёшь RAG чанк из набоора сообщений чата SmartTherm для технического помощника.
+CHUNK_CREATION_PROMPT = """<|start_header_id|>system<|end_header_id|>
+
+Ты создаёшь RAG чанк из сообщений чата SmartTherm для технического помощника.
+Твоя задача — создать выжимку фактической информации.
+Никаких пояснений, только JSON.
+
+<|eot_id|><|start_header_id|>user<|end_header_id|>
 
 ВХОД: Сообщения чата (вопросы + ответы + обсуждение + пользовательский опыт)
 
@@ -25,8 +31,6 @@ CHUNK_CREATION_PROMPT = """
 Тема: {topic}
 Сообщения: {num_messages}
 Даты: {date_range}
-Есть решение: {has_solution}
-Кратко: {summary}
 
 ПОЛНЫЕ СООБЩЕНИЯ:
 {messages_text}
@@ -34,10 +38,10 @@ CHUNK_CREATION_PROMPT = """
 ЗАДАЧА: Создай 1 RAG чанк.
 
 ТРЕБОВАНИЯ К content.text:
-1. Самодостаточность: текст понятен без контекста чата
+1. ГЛАВНОЕ: собери все полезные факты об обсуждаемой теме
 2. Полнота: включи проблему, решение, технические детали
-3. Конкретика: версии, пины, команды, ссылки на инструкцию
-4. Стиль: технический, нейтральный, без "пользователь спросил"
+3. Конкретика: ВСЕ факты, версии, пины, команды, термины
+4. ТОЛЬКО ФАКТЫ: НЕ пиши "пользователь спросил ...", "В сообщении указано ...", "В тексте обсуждается ..."
 5. Объём: до 500 слов
 
 ТРЕБОВАНИЯ К metadata:
@@ -46,10 +50,10 @@ CHUNK_CREATION_PROMPT = """
    navien, baxi, immergas, котёл, pid, homeassistant, mqtt,
    подключение, ошибка, диагностика, распиновка, веб-интерфейс
 2. version: укажи если упомянута (например "0.73")
-3. confidence: 0.0-1.0 (полезность обсуждения/полноту ответа)
-   - 0.9-1.0: есть ответ от Evgen + подтверждение
-   - 0.7-0.9: есть ответ от Evgen
-   - 0.5-0.7: есть ответ от пользователя с опытом
+3. confidence: 0.0-1.0 (полезность обсуждения)
+   - 0.9-1.0: Много фактической информации, технических деталей
+   - 0.7-0.9: Всё описано достаточно подробно, есть полезный опыт
+   - 0.5-0.7: Есть полезные факты
    - <0.5: нет решения
 
 ВЕРНИ JSON СТРОГОЙ СТРУКТУРЫ:
@@ -61,19 +65,18 @@ CHUNK_CREATION_PROMPT = """
   "metadata": {{
     "tags": ["...", "..."],
     "version": "...",
-    "confidence": 0.9,
+    "confidence": 0.9
   }}
-}}
+}}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
 
-ВЫВОД (только JSON, без пояснений):
 """
 
 
-def load_deduped_threads(path: Path) -> list[Thread]:
-    """Загрузить дедуплицированные ветки"""
+def load_threads(path: Path) -> list[Thread]:
+    """Загрузить ветки из файла"""
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
-    
+
     return [Thread(**t) for t in data["threads"]]
 
 
@@ -95,7 +98,8 @@ def create_chunk_from_thread(
     messages: dict[int, dict],
     llm: LLMEngine,
     max_tokens: int = 2048,
-    temperature: float = 0.5
+    temperature: float = 0.5,
+    debug: bool = False
 ) -> RAGChunk | None:
     """
     Создать RAG чанк из ветки
@@ -106,6 +110,7 @@ def create_chunk_from_thread(
         llm: LLM движок
         max_tokens: Максимум токенов
         temperature: Температура генерации
+        debug: Если True, выводить сырой ответ LLM
     """
     # Получение сообщений ветки
     thread_messages = [
@@ -129,8 +134,6 @@ def create_chunk_from_thread(
         topic=thread.topic,
         num_messages=len(thread.message_ids),
         date_range=f"{thread.start_date} — {thread.end_date}",
-        has_solution="Да" if thread.has_solution else "Нет",
-        summary=thread.summary,
         messages_text=messages_text
     )
     
@@ -143,7 +146,15 @@ def create_chunk_from_thread(
         temperature=temperature,
         top_p=0.9
     )
-    
+
+    # Debug режим: вывод сырого ответа
+    if debug:
+        print(f"\n{'='*60}")
+        print(f"ЧАНК {thread.thread_id} - СЫРОЙ ОТВЕТ LLM:")
+        print(f"{'='*60}")
+        print(response)
+        print(f"{'='*60}\n")
+
     # Парсинг ответа
     try:
         # Очистка от markdown
@@ -153,8 +164,10 @@ def create_chunk_from_thread(
         if response.endswith("```"):
             response = response[:-3]
         response = response.strip()
-        
-        chunk_data = json.loads(response)
+
+        # Извлечь JSON из ответа (на случай лишнего текста)
+        json_str = extract_json_from_text(response)
+        chunk_data = json.loads(json_str)
 
         # Создание чанка с явными объектами
         from .models import ChunkSource, ChunkContent, ChunkMetadata
@@ -167,8 +180,8 @@ def create_chunk_from_thread(
                 date_range=f"{thread.start_date} — {thread.end_date}"
             ),
             content=ChunkContent(
-                summary=chunk_data.get("content", {}).get("summary", thread.summary),
-                text=chunk_data.get("content", {}).get("text", thread.summary)
+                summary=chunk_data.get("content", {}).get("summary", thread.topic),
+                text=chunk_data.get("content", {}).get("text", thread.topic)
             ),
             metadata=ChunkMetadata(
                 tags=chunk_data.get("metadata", {}).get("tags", []),
@@ -182,9 +195,12 @@ def create_chunk_from_thread(
     except Exception as e:
         logger.error(f"Ошибка парсинга чанка {thread.thread_id}: {e}")
 
-        # Fallback: создать чанк из summary
+        # Fallback: создать чанк из topic + метаданных
         from .models import ChunkSource, ChunkContent, ChunkMetadata
-        
+
+        # Создаём более длинный текст для fallback
+        fallback_text = f"{thread.topic}. Сообщений: {len(thread.message_ids)}. Период: {thread.start_date} — {thread.end_date}."
+
         return RAGChunk(
             chunk_id=f"tg_{thread.thread_id}",
             source=ChunkSource(
@@ -193,8 +209,8 @@ def create_chunk_from_thread(
                 date_range=f"{thread.start_date} — {thread.end_date}"
             ),
             content=ChunkContent(
-                summary=thread.summary,
-                text=thread.summary
+                summary=fallback_text,
+                text=fallback_text
             ),
             metadata=ChunkMetadata(
                 tags=[],
@@ -210,7 +226,8 @@ def run_stage3(
     threads_path: Path | None = None,
     messages_path: Path | None = None,
     output_path: Path | None = None,
-    sample_size: int = 5
+    sample_size: int = 5,
+    debug: bool = False
 ) -> dict:
     """
     Запустить Этап 3
@@ -218,20 +235,21 @@ def run_stage3(
     Args:
         config: Конфигурация
         llm: LLM движок
-        threads_path: Входной файл с ветками (по умолчанию: processed/chat/threads_deduped.json)
+        threads_path: Входной файл с ветками (по умолчанию: processed/chat/threads.json)
         messages_path: Входной файл с сообщениями (по умолчанию: processed/chat/messages_filtered.json)
         output_path: Выходной файл (по умолчанию: processed/chat/chunks_rag.jsonl)
         sample_size: Размер выборки для валидации
+        debug: Если True, выводить сырые ответы LLM
     """
     logger.info("=" * 60)
     logger.info("ЭТАП 3: Создание RAG чанков")
     logger.info("=" * 60)
 
-    # Загрузка дедуплицированных веток
-    threads_path = threads_path or config.processed_dir / "chat" / "threads_deduped.json"
-    
+    # Загрузка веток
+    threads_path = threads_path or config.processed_dir / "chat" / "threads.json"
+
     logger.info(f"Загрузка веток из {threads_path}")
-    threads = load_deduped_threads(threads_path)
+    threads = load_threads(threads_path)
     logger.info(f"Загружено {len(threads)} веток")
 
     # Загрузка сообщений
@@ -275,7 +293,8 @@ def run_stage3(
             messages=messages,
             llm=llm,
             max_tokens=stage3_cfg.get("max_tokens") or 2048,
-            temperature=stage3_cfg.get("temperature") or 0.5
+            temperature=stage3_cfg.get("temperature") or 0.5,
+            debug=debug
         )
 
         if chunk:

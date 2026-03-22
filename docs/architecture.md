@@ -29,15 +29,13 @@ smart-therm-bot/
 │   │
 │   ├── processed/                  # Обработанные данные
 │   │   └── chat/
-│   │       ├── messages_filtered.json    # Этап 0
-│   │       ├── threads.json              # Этап 1
-│   │       ├── threads_deduped.json      # Этап 2
+│   │       ├── messages_filtered.json    # Этап 1
+│   │       ├── threads.json              # Этап 2
 │   │       ├── chunks_rag.jsonl          # Этап 3
 │   │       ├── chunks_sample.json        # Выборка для валидации
 │   │       └── test/                     # Тестовые данные (обрезанные)
 │   │           ├── messages_test.json
 │   │           ├── threads_test.json
-│   │           ├── threads_deduped_test.json
 │   │           └── chunks_rag_test.jsonl
 │   │
 │   └── indices/                    # Векторные индексы
@@ -62,13 +60,12 @@ smart-therm-bot/
 │   └── chat_processor/             # Обработка чата
 │       ├── __init__.py
 │       ├── models.py               # Pydantic модели данных
-│       ├── stage0_filter.py        # Фильтрация шума
-│       ├── stage1_threads.py       # Поиск веток
-│       ├── stage2_dedup.py         # Удаление дубликатов
+│       ├── stage1_filter.py        # Фильтрация шума
+│       ├── stage2_threads.py       # Выделение веток
 │       └── stage3_chunks.py        # Создание RAG чанков
 │   
 │
-├── scripts/                        # ← Скрипты
+├── scripts/                        # Скрипты
 │   ├── download_model.py           # Скачивание моделей
 │   ├── chat.py                     # Интерактивный чат с LLM
 │   ├── process_chat_cli.py         # CLI для всех этапов обработки
@@ -145,7 +142,7 @@ smart-therm-bot/
 
 ## Правила разработки
 
-- **ВСЕ параметры в `configs/default.yaml`** | Модель, температура, размер группы, и т.д.
+- **ВСЕ параметры в `configs/default.yaml`** Модель, температура, размер группы, и т.д.
 
 - **Никакого хардкода**: В коде читать из `Config.load()`
 
@@ -189,18 +186,14 @@ make chat
 make process-all
 
 # Отдельные этапы
-make process-stage0      # Фильтрация шума
-make process-stage1      # Поиск веток
-make process-stage2      # Удаление дубликатов
+make process-stage1      # Фильтрация шума
+make process-stage2      # Выделение веток (с --debug)
 make process-stage3      # Создание RAG чанков
-
-# Тест Этапа 1 (50 сообщений)
-make test-stage1
 
 # Тестирование на обрезанных данных (250 сообщений)
 make truncate            # Обрезать сообщения до 250
 make truncate-n N=100    # Обрезать до N сообщений
-make test-all            # Полный тест: truncate + stage1 + stage2 + stage3
+make test-all            # Полный тест: truncate + stage2 + stage3
 
 # Валидация
 make validate            # Проверка результатов
@@ -233,23 +226,18 @@ make help
 ### Этапы обработки чата
 
 ```
-Этап 0: Фильтрация
+Этап 1: Фильтрация
   Вход:  data/raw/chat_history.json (36K сообщений)
   Выход: data/processed/chat/messages_filtered.json
   Логика: Удаление сервисных, эмодзи, флуда, дубликатов
 
-Этап 1: Поиск веток(из перекрывающихся наборов сообщений)
+Этап 2: Выделение веток
   Вход:  messages_filtered.json
   Выход: data/processed/chat/threads.json
   Логика: LLM выделяет независимые ветки обсуждения
 
-Этап 2: Дедупликация(опционально)
-  Вход:  threads.json
-  Выход: data/processed/chat/threads_deduped.json
-  Логика: Объединение дубликатов на границах групп
-
 Этап 3: RAG чанки
-  Вход:  threads_deduped.json
+  Вход:  threads.json + messages_filtered.json
   Выход: data/processed/chat/chunks_rag.jsonl
   Логика: Создание чанков {topic, knowledge, metadata}
 ```
@@ -262,9 +250,8 @@ truncate: Обрезка сообщений
   Выход: data/processed/chat/test/messages_test.json (250 сообщений)
 
 test-all: Полный тест
-  messages_test.json → stage1 → threads_test.json
-  threads_test.json → stage2 → threads_deduped_test.json
-  threads_deduped_test.json + messages_test.json → stage3 → chunks_rag_test.jsonl
+  messages_test.json → stage2 → threads_test.json
+  threads_test.json + messages_test.json → stage3 → chunks_rag_test.jsonl
 ```
 
 ### Формат чанка (JSONL)

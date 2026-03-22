@@ -1,5 +1,5 @@
 """
-Этап 1: Выделение веток
+Этап 2: Выделение веток
 
 Разбивает отфильтрованные сообщения на группы с перекрытием
 и использует LLM для выделения независимых веток обсуждения
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 THREAD_EXTRACTION_PROMPT = """<|start_header_id|>system<|end_header_id|>
 
 Ты анализируешь историю чата технической поддержки SmartTherm.
-Твоя задача — выделить независимые ветки обсуждения и вернуть JSON строгой структуры.
+Твоя задача — выделить полезные независимые ветки обсуждения и вернуть JSON строгой структуры.
 Никаких пояснений, только JSON.
 
 <|eot_id|><|start_header_id|>user<|end_header_id|>
@@ -43,20 +43,19 @@ THREAD_EXTRACTION_PROMPT = """<|start_header_id|>system<|end_header_id|>
 КРИТЕРИИ объединения в одну ветку:
 - Ответы на один вопрос
 - Уточнения проблемы тем же пользователем
-- Цепочка reply_to_message_id (явная связь между сообщениями)
+- Цепочка reply_to_message_id (связь между сообщениями)
 - Обсуждение одной темы
+- Сообщения содержат полезную для пользователей информацию
 
 ВЕРНИ JSON СТРОГОЙ СТРУКТУРЫ:
 {{
   "threads": [
     {{
-      "thread_id": "t{group_num:03d}_0",
+      "thread_id": "t{group_num:03d}_1",
       "topic": "Краткая тема (3-5 слов)",
       "message_ids": [12345, 12346, 12350],
       "start_date": "2024-01-15",
-      "end_date": "2024-01-17",
-      "has_solution": true,
-      "summary": "Краткое содержание обсуждения"
+      "end_date": "2024-01-17"
     }}
   ]
 }}
@@ -64,18 +63,13 @@ THREAD_EXTRACTION_PROMPT = """<|start_header_id|>system<|end_header_id|>
 ТРЕБОВАНИЯ:
 - topic: 3-5 слов, без артиклей
 - message_ids: все ID сообщений ветки (отсортированы, без бесполезных сообщений)
-- has_solution: true если есть ответ от Evgen или подтверждение решения
-- summary: 1-3 предложения, конкретно
+- thread_id для разных веток: t{group_num:03d}_1, t{group_num:03d}_2, t{group_num:03d}_3 ...
 
 КРИТИЧЕСКИ ВАЖНО:
-1. ВЕРНИ ТОЛЬКО JSON - никаких пояснений до или после
-2. НЕ используй markdown (никаких ```json)
-3. ЗАКОНЧИ ответ сразу после закрывающей }}
-4. ДАЖЕ ОДНО полезное, подробное, информативное сообщение выделяй как ветку
-5. НЕ пиши "Обратите внимание", "Пожалуйста", "С уважением" и т.д.
-6. ДАЖЕ если сообщения это просто ссылки - группируй их по теме
-7. Игнорируй бесполезные сообщения, даже если это сообщение с reply_to_message_id
-8. ЕСЛИ не можешь выделить ветки, верни пустой список: {{"threads": []}}
+1. ВЫВОДИ ТОЛЬКО JSON без пояснений
+1. ИГНОРИРУЙ бесполезные сообщения, даже если это сообщение с reply_to_message_id
+2. ВЫДЕЛИ хотя бы 1 ветку
+3. ОБЯЗАТЕЛЬНО включай в ответ все полезные, информативные сообщения
 
 СООБЩЕНИЯ ДЛЯ АНАЛИЗА:
 {messages_json}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
@@ -213,8 +207,6 @@ def extract_threads_from_group(
                 message_ids=t.get("message_ids", []),
                 start_date=t.get("start_date", group[0].date[:10]),
                 end_date=t.get("end_date", group[-1].date[:10]),
-                has_solution=t.get("has_solution", False),
-                summary=t.get("summary", ""),
                 participant_count=len(set(
                     msg.from_ for msg in group if msg.id in t.get("message_ids", [])
                 ))
@@ -236,8 +228,6 @@ def extract_threads_from_group(
                 message_ids=[msg.id for msg in group],
                 start_date=group[0].date[:10],
                 end_date=group[-1].date[:10],
-                has_solution=any(msg.is_from_developer for msg in group),
-                summary=f"Группа сообщений {group[0].date[:10]} — {group[-1].date[:10]}",
                 participant_count=len(set(msg.from_ for msg in group))
             )
         ]
@@ -249,7 +239,7 @@ def extract_threads_from_group(
     )
 
 
-def run_stage1(
+def run_stage2(
     config: Config,
     llm: LLMEngine | None = None,
     input_path: Path | None = None,
@@ -257,7 +247,7 @@ def run_stage1(
     debug: bool = False
 ) -> dict:
     """
-    Запустить Этап 1
+    Запустить Этап 2
 
     Args:
         config: Конфигурация
@@ -267,7 +257,7 @@ def run_stage1(
         debug: Если True, выводить сырые ответы LLM
     """
     logger.info("=" * 60)
-    logger.info("ЭТАП 1: Выделение веток")
+    logger.info("ЭТАП 2: Выделение веток")
     logger.info("=" * 60)
 
     # Загрузка отфильтрованных сообщений

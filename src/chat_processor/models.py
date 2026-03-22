@@ -64,8 +64,6 @@ class Thread(BaseModel):
     message_ids: list[int]
     start_date: str
     end_date: str
-    has_solution: bool = False
-    summary: str
     participant_count: int = Field(default=1)
 
 
@@ -89,8 +87,8 @@ class ChunkSource(BaseModel):
 
 class ChunkContent(BaseModel):
     """Содержимое чанка"""
-    summary: str = Field(max_length=200)
-    text: str = Field(min_length=50, max_length=2000)
+    summary: str = Field(max_length=500)
+    text: str = Field(min_length=10, max_length=3000)
 
 
 class ChunkMetadata(BaseModel):
@@ -122,8 +120,8 @@ class RAGChunk(BaseModel):
                 date_range=f"{thread.start_date} — {thread.end_date}"
             ),
             content=ChunkContent(
-                summary=thread.summary,
-                text=thread.summary
+                summary=thread.topic,
+                text=thread.topic
             ),
             metadata=ChunkMetadata(
                 tags=[],

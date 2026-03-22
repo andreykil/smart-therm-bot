@@ -4,7 +4,6 @@ CLI утилиты для обработки чата
 Отдельные команды для каждого этапа:
 - stage0: Фильтрация шума
 - stage1: Выделение веток
-- stage2: Дедупликация веток
 - stage3: Создание RAG чанков
 - all: Запуск всех этапов
 """
@@ -18,7 +17,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.chat_processor import (
-    run_stage0,
     run_stage1,
     run_stage2,
     run_stage3
@@ -62,43 +60,18 @@ def get_config(args) -> Config:
     return config
 
 
-def cmd_stage0(args):
-    """Этап 0: Фильтрация шума"""
-    config = get_config(args)
-    
-    input_path = Path(args.input_path) if hasattr(args, 'input_path') and args.input_path else None
-    output_path = Path(args.output_path) if hasattr(args, 'output_path') and args.output_path else None
-    
-    run_stage0(config, input_path=input_path, output_path=output_path)
-
-
 def cmd_stage1(args):
-    """Этап 1: Выделение веток"""
+    """Этап 1: Фильтрация шума"""
     config = get_config(args)
 
-    # Инициализация LLM
-    llm = create_llm_engine(
-        model_id=config.llm.get("model"),
-        quantization=config.llm.get("quantization"),
-        n_ctx=config.llm.get("context_size") or 8192,
-        verbose=args.verbose if hasattr(args, 'verbose') else False
-    )
-
-    if not llm.model_exists():
-        logging.error(f"Модель не найдена: {llm.get_model_path()}")
-        sys.exit(1)
-
-    llm.load()
-    
     input_path = Path(args.input_path) if hasattr(args, 'input_path') and args.input_path else None
     output_path = Path(args.output_path) if hasattr(args, 'output_path') and args.output_path else None
-    debug = args.debug if hasattr(args, 'debug') else False
-    
-    run_stage1(config, llm, input_path=input_path, output_path=output_path, debug=debug)
+
+    run_stage1(config, input_path=input_path, output_path=output_path)
 
 
 def cmd_stage2(args):
-    """Этап 2: Дедупликация веток"""
+    """Этап 2: Выделение веток"""
     config = get_config(args)
 
     # Инициализация LLM
@@ -114,11 +87,12 @@ def cmd_stage2(args):
         sys.exit(1)
 
     llm.load()
-    
+
     input_path = Path(args.input_path) if hasattr(args, 'input_path') and args.input_path else None
     output_path = Path(args.output_path) if hasattr(args, 'output_path') and args.output_path else None
-    
-    run_stage2(config, llm, input_path=input_path, output_path=output_path)
+    debug = args.debug if hasattr(args, 'debug') else False
+
+    run_stage2(config, llm, input_path=input_path, output_path=output_path, debug=debug)
 
 
 def cmd_stage3(args):
@@ -142,14 +116,16 @@ def cmd_stage3(args):
     threads_path = Path(args.threads_path) if hasattr(args, 'threads_path') and args.threads_path else None
     messages_path = Path(args.messages_path) if hasattr(args, 'messages_path') and args.messages_path else None
     output_path = Path(args.output_path) if hasattr(args, 'output_path') and args.output_path else None
-    
+    debug = args.debug if hasattr(args, 'debug') else False
+
     run_stage3(
-        config, 
-        llm, 
-        threads_path=threads_path, 
-        messages_path=messages_path, 
+        config,
+        llm,
+        threads_path=threads_path,
+        messages_path=messages_path,
         output_path=output_path,
-        sample_size=args.sample_size if hasattr(args, 'sample_size') else 5
+        sample_size=args.sample_size if hasattr(args, 'sample_size') else 5,
+        debug=debug
     )
 
 
@@ -171,21 +147,15 @@ def cmd_all(args):
 
     llm.load()
 
-    # Этап 0
-    print("\n" + "=" * 70)
-    print("ЭТАП 0: Фильтрация шума")
-    print("=" * 70)
-    stats0 = run_stage0(config)
-
     # Этап 1
     print("\n" + "=" * 70)
-    print("ЭТАП 1: Выделение веток")
+    print("ЭТАП 1: Фильтрация шума")
     print("=" * 70)
-    stats1 = run_stage1(config, llm)
+    stats1 = run_stage1(config)
 
     # Этап 2
     print("\n" + "=" * 70)
-    print("ЭТАП 2: Дедупликация веток")
+    print("ЭТАП 2: Выделение веток")
     print("=" * 70)
     stats2 = run_stage2(config, llm)
 
@@ -193,15 +163,18 @@ def cmd_all(args):
     print("\n" + "=" * 70)
     print("ЭТАП 3: Создание RAG чанков")
     print("=" * 70)
-    stats3 = run_stage3(config, llm, sample_size=args.sample_size if hasattr(args, 'sample_size') else 5)
+    stats3 = run_stage3(
+        config,
+        llm,
+        sample_size=args.sample_size if hasattr(args, 'sample_size') else 5
+    )
 
     # Итоговая статистика
     print("\n" + "=" * 70)
     print("ИТОГОВАЯ СТАТИСТИКА")
     print("=" * 70)
-    print(f"Этап 0: {stats0['total_filtered']}/{stats0['total_original']} сообщений")
-    print(f"Этап 1: Найдено {stats1['threads_found']} веток")
-    print(f"Этап 2: {stats2['threads_deduped']} веток после дедупликации")
+    print(f"Этап 1: {stats1['total_filtered']}/{stats1['total_original']} сообщений")
+    print(f"Этап 2: Найдено {stats2['threads_found']} веток")
     print(f"Этап 3: Создано {stats3['chunks_created']} чанков")
 
 
@@ -228,23 +201,17 @@ def main():
     common_args.add_argument("--group-size", type=int, default=50, help="Размер группы")
     common_args.add_argument("--overlap-size", type=int, default=5, help="Перекрытие")
 
-    # Этап 0
-    parser_stage0 = subparsers.add_parser("stage0", help="Фильтрация шума", parents=[common_args])
-    parser_stage0.add_argument("--input-path", type=str, default=None, help="Входной файл")
-    parser_stage0.add_argument("--output-path", type=str, default=None, help="Выходной файл")
-    parser_stage0.set_defaults(func=cmd_stage0)
-
     # Этап 1
-    parser_stage1 = subparsers.add_parser("stage1", help="Выделение веток", parents=[common_args])
+    parser_stage1 = subparsers.add_parser("stage1", help="Фильтрация шума", parents=[common_args])
     parser_stage1.add_argument("--input-path", type=str, default=None, help="Входной файл")
     parser_stage1.add_argument("--output-path", type=str, default=None, help="Выходной файл")
-    parser_stage1.add_argument("--debug", action="store_true", help="Debug режим: сырой ответ LLM")
     parser_stage1.set_defaults(func=cmd_stage1)
 
     # Этап 2
-    parser_stage2 = subparsers.add_parser("stage2", help="Дедупликация веток", parents=[common_args])
+    parser_stage2 = subparsers.add_parser("stage2", help="Выделение веток", parents=[common_args])
     parser_stage2.add_argument("--input-path", type=str, default=None, help="Входной файл")
     parser_stage2.add_argument("--output-path", type=str, default=None, help="Выходной файл")
+    parser_stage2.add_argument("--debug", action="store_true", help="Debug режим: сырой ответ LLM")
     parser_stage2.set_defaults(func=cmd_stage2)
 
     # Этап 3
@@ -253,6 +220,7 @@ def main():
     parser_stage3.add_argument("--messages-path", type=str, default=None, help="Входной файл с сообщениями")
     parser_stage3.add_argument("--output-path", type=str, default=None, help="Выходной файл")
     parser_stage3.add_argument("--sample-size", type=int, default=5, help="Размер выборки")
+    parser_stage3.add_argument("--debug", action="store_true", help="Debug режим: сырой ответ LLM")
     parser_stage3.set_defaults(func=cmd_stage3)
 
     # Все этапы

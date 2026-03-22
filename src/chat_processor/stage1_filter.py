@@ -1,5 +1,5 @@
 """
-Этап 0: Фильтрация шума
+Этап 1: Фильтрация шума
 
 Удаляет:
 - Сервисные сообщения
@@ -212,13 +212,13 @@ def filter_messages(
     return stats
 
 
-def run_stage0(
+def run_stage1(
     config: Config,
     input_path: Path | None = None,
     output_path: Path | None = None
 ) -> dict:
     """
-    Запустить Этап 0
+    Запустить Этап 1
 
     Args:
         config: Конфигурация
@@ -226,7 +226,7 @@ def run_stage0(
         output_path: Выходной файл (по умолчанию: processed/chat/messages_filtered.json)
     """
     logger.info("=" * 60)
-    logger.info("ЭТАП 0: Фильтрация шума")
+    logger.info("ЭТАП 1: Фильтрация шума")
     logger.info("=" * 60)
 
     chat_cfg = config.chat_processing

@@ -17,9 +17,9 @@ llm:
   provider: "local"  # local, ollama, vllm
 
   # ДЕФОЛТНАЯ LLM для обработки чата
-  # model: "vikhr-nemo-12b-instruct-r"
-  model: "vikhr-llama-3.1-8b-instruct-r"
-  quantization: "Q4_K_M"  # Q4_K_M, Q5_K_M, Q6_K, Q8_0
+  model: "vikhr-nemo-12b-instruct-r"
+  # model: "vikhr-llama-3.1-8b-instruct-r"
+  quantization: "Q8_0"  # Q4_K_M, Q5_K_M, Q6_K, Q8_0
 
   temperature: 0.3  # Для детерминированных ответов (RAG, чанки)
   max_tokens: 2048
