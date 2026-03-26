@@ -6,7 +6,6 @@ Ollama LLM клиент
 
 import json
 import logging
-from pathlib import Path
 from typing import Generator, Optional
 
 import requests
@@ -75,9 +74,50 @@ class OllamaClient:
         """Выгрузить модель (Ollama управляет сам)"""
         self._loaded = False
 
-    def generate(
+    def _ensure_loaded(self) -> None:
+        if not self._loaded:
+            self.load(strict=True)
+
+    def _build_chat_request(
         self,
-        prompt: str,
+        messages: list[dict],
+        max_tokens: int,
+        temperature: float,
+        top_p: float,
+        stop: Optional[list],
+        think: Optional[bool],
+        stream: bool,
+    ) -> dict:
+        effective_think = think if think is not None else self.think
+
+        request_json = {
+            "model": self.model,
+            "messages": messages,
+            "options": {
+                "num_predict": max_tokens,
+                "temperature": temperature,
+                "top_p": top_p,
+                "stop": stop or [],
+            },
+            "stream": stream,
+        }
+
+        if effective_think is not None:
+            request_json["think"] = effective_think
+
+        return request_json
+
+    @staticmethod
+    def _extract_content(data: dict) -> str:
+        if "message" in data and isinstance(data["message"], dict):
+            return str(data["message"].get("content", ""))
+        if "response" in data:
+            return str(data["response"])
+        return ""
+
+    def chat(
+        self,
+        messages: list[dict],
         max_tokens: int = 1024,
         temperature: float = 0.7,
         top_p: float = 0.9,
@@ -85,10 +125,10 @@ class OllamaClient:
         think: Optional[bool] = None
     ) -> str:
         """
-        Сгенерировать ответ на промпт
+        Сгенерировать ответ через /api/chat
 
         Args:
-            prompt: Входной текст
+            messages: Список сообщений [{"role": "system|user|assistant", "content": "..."}]
             max_tokens: Максимум токенов на выходе
             temperature: Температура генерации
             top_p: Top-p sampling
@@ -96,43 +136,31 @@ class OllamaClient:
             think: Переопределить thinking mode (None - использовать из __init__)
 
         Returns:
-            Сгенерированный текст
+            Сгенерированный текст ассистента
         """
-        if not self._loaded:
-            self.load(strict=True)
+        self._ensure_loaded()
 
-        effective_think = think if think is not None else self.think
-
-        # Формируем запрос к /api/generate для raw prompt
-        request_json = {
-            "model": self.model,
-            "prompt": prompt,
-            "options": {
-                "num_predict": max_tokens,
-                "temperature": temperature,
-                "top_p": top_p,
-                "stop": stop or []
-            },
-            "stream": False
-        }
-
-        if effective_think is not None:
-            request_json["think"] = effective_think
+        request_json = self._build_chat_request(
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            stop=stop,
+            think=think,
+            stream=False,
+        )
 
         response = requests.post(
-            f"{self.base_url}/api/generate",
+            f"{self.base_url}/api/chat",
             json=request_json,
             timeout=600
         )
         response.raise_for_status()
-        data = response.json()
-        if "response" in data:
-            return data["response"]
-        return data["message"]["content"]
+        return self._extract_content(response.json())
 
-    def generate_stream(
+    def chat_stream(
         self,
-        prompt: str,
+        messages: list[dict],
         max_tokens: int = 1024,
         temperature: float = 0.7,
         top_p: float = 0.9,
@@ -140,10 +168,10 @@ class OllamaClient:
         think: Optional[bool] = None
     ) -> Generator[str, None, None]:
         """
-        Сгенерировать ответ с потоковой отдачей
+        Сгенерировать ответ через /api/chat с потоковой отдачей
 
         Args:
-            prompt: Входной текст
+            messages: Список сообщений [{"role": "system|user|assistant", "content": "..."}]
             max_tokens: Максимум токенов на выходе
             temperature: Температура генерации
             top_p: Top-p sampling
@@ -151,31 +179,22 @@ class OllamaClient:
             think: Переопределить thinking mode (None - использовать из __init__)
 
         Yields:
-            Сгенерированные токены
+            Сгенерированные фрагменты ответа
         """
-        if not self._loaded:
-            self.load(strict=True)
+        self._ensure_loaded()
 
-        effective_think = think if think is not None else self.think
-
-        # Формируем запрос к /api/generate для raw prompt
-        request_json = {
-            "model": self.model,
-            "prompt": prompt,
-            "options": {
-                "num_predict": max_tokens,
-                "temperature": temperature,
-                "top_p": top_p,
-                "stop": stop or []
-            },
-            "stream": True
-        }
-
-        if effective_think is not None:
-            request_json["think"] = effective_think
+        request_json = self._build_chat_request(
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            stop=stop,
+            think=think,
+            stream=True,
+        )
 
         response = requests.post(
-            f"{self.base_url}/api/generate",
+            f"{self.base_url}/api/chat",
             json=request_json,
             stream=True,
             timeout=600
@@ -183,12 +202,13 @@ class OllamaClient:
         response.raise_for_status()
 
         for line in response.iter_lines():
-            if line:
-                data = json.loads(line)
-                if "response" in data:
-                    yield data["response"]
-                elif "message" in data and "content" in data["message"]:
-                    yield data["message"]["content"]
+            if not line:
+                continue
+
+            data = json.loads(line)
+            content = self._extract_content(data)
+            if content:
+                yield content
 
     def get_stats(self) -> dict:
         """Получить статистику модели"""

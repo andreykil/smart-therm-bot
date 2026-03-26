@@ -6,7 +6,7 @@ LLM модуль для работы с Ollama
     
     client = OllamaClient(model="llama3.1")
     client.load()
-    response = client.generate(prompt="Привет!", max_tokens=100)
+    response = client.chat(messages=[{"role": "user", "content": "Привет!"}], max_tokens=100)
 """
 
 from .ollama import OllamaClient

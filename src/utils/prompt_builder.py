@@ -1,14 +1,13 @@
 """
-PromptBuilder — сборка финального prompt для chat-сценариев.
+PromptBuilder — сборка финальных messages для chat-сценариев.
 
 Использует PromptManager как источник шаблонов и формирует
-итоговый prompt string для LLM.
+итоговый список сообщений для LLM.
 """
 
 from typing import Any, Optional
 
 from .prompt_manager import PromptManager
-from .text_utils import format_llama_chat_prompt
 
 
 class PromptBuilder:
@@ -45,16 +44,16 @@ class PromptBuilder:
 
         return normalized
 
-    def build_chat_prompt(
+    def build_chat_messages(
         self,
         user_question: str,
         history: list[dict],
         rag_context: Optional[str] = None,
         use_rag: bool = False,
         system_prompt_override: Optional[str] = None
-    ) -> str:
+    ) -> list[dict[str, str]]:
         """
-        Собрать финальный prompt string для чата.
+        Собрать список сообщений для /api/chat.
 
         Args:
             user_question: Новый вопрос пользователя
@@ -66,25 +65,29 @@ class PromptBuilder:
         system_prompt = self.get_system_prompt(use_rag=use_rag, system_prompt_override=system_prompt_override)
         normalized_history = self._normalize_history(history)
 
-        if use_rag and rag_context:
-            user_message = self.prompt_manager.get_prompt(
-                "chat_user_with_context",
-                user_question=user_question.strip(),
-                rag_context=rag_context.strip()
-            )
-        else:
-            user_message = self.prompt_manager.get_prompt(
-                "chat_user_plain",
-                user_question=user_question.strip()
-            )
+        user_blocks: list[str] = []
 
-        messages = [
+        if use_rag and rag_context and rag_context.strip():
+            context_block = self.prompt_manager.get_prompt(
+                "chat_context_block",
+                rag_context=rag_context.strip()
+            ).strip()
+            if context_block:
+                user_blocks.append(context_block)
+
+        question_block = self.prompt_manager.get_prompt(
+            "chat_question_block",
+            user_question=user_question.strip()
+        ).strip()
+        user_blocks.append(question_block)
+
+        user_message = "\n\n".join(user_blocks)
+
+        return [
             {"role": "system", "content": system_prompt},
             *normalized_history,
             {"role": "user", "content": user_message}
         ]
-
-        return format_llama_chat_prompt(messages)
 
     @staticmethod
     def _format_chunk_messages(group_messages: list[Any]) -> str:
@@ -94,11 +97,16 @@ class PromptBuilder:
             for msg in group_messages
         )
 
-    def build_chunk_creation_prompt(self, group_messages: list[Any], last_message_date: str) -> str:
-        """Собрать prompt для создания RAG чанка из группы сообщений"""
+    def build_chunk_creation_messages(self, group_messages: list[Any], last_message_date: str) -> list[dict[str, str]]:
+        """Собрать messages для создания RAG чанка из группы сообщений"""
         messages_text = self._format_chunk_messages(group_messages)
-        return self.prompt_manager.get_prompt(
-            "chunk_creation",
+        system_prompt = self.prompt_manager.get_prompt("chunk_creation_system")
+        user_prompt = self.prompt_manager.get_prompt(
+            "chunk_creation_user",
             messages_text=messages_text,
             date=last_message_date,
         )
+        return [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]

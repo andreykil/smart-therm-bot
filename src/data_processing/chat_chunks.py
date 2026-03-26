@@ -139,17 +139,17 @@ def create_chunk_from_group(
         logger.warning(f"Группа {group.group_id} не имеет сообщений")
         return None
 
-    # Формирование промпта через PromptBuilder
+    # Формирование messages через PromptBuilder
     prompt_builder = PromptBuilder()
-    prompt = prompt_builder.build_chunk_creation_prompt(
+    messages_payload = prompt_builder.build_chunk_creation_messages(
         group_messages=group_messages,
         last_message_date=last_message_date,
     )
 
     logger.debug(f"Создание чанков для {group.group_id}...")
 
-    response = llm.generate(
-        prompt=prompt,
+    response = llm.chat(
+        messages=messages_payload,
         max_tokens=max_tokens,
         temperature=temperature,
         top_p=0.9

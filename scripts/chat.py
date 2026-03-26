@@ -9,6 +9,7 @@
 """
 
 import argparse
+import json
 import logging
 import sys
 from pathlib import Path
@@ -72,7 +73,7 @@ class ChatSession:
     ) -> str:
         """Отправить сообщение и получить ответ (нестримовый режим)"""
         rag_context = self._search_rag(user_message, use_rag)
-        prompt = self.prompt_builder.build_chat_prompt(
+        messages_payload = self.prompt_builder.build_chat_messages(
             user_question=user_message,
             history=self.messages,
             rag_context=rag_context,
@@ -82,16 +83,15 @@ class ChatSession:
 
         if self.debug:
             print("\n" + "=" * 70)
-            print("🐛 DEBUG: Промпт, передаваемый в LLM:")
+            print("🐛 DEBUG: Messages payload, передаваемый в LLM:")
             print("=" * 70)
-            print(prompt)
+            print(json.dumps(messages_payload, ensure_ascii=False, indent=2))
             print("=" * 70 + "\n")
 
-        response = self.client.generate(
-            prompt=prompt,
+        response = self.client.chat(
+            messages=messages_payload,
             max_tokens=max_tokens,
             temperature=temperature,
-            stop=["<|eot_id|>"],
         )
         response = clean_response_text(response, strip_spaces=True)
 
@@ -203,7 +203,7 @@ def interactive_chat(
                 continue
 
             rag_context = session._search_rag(user_input, use_rag)
-            prompt = prompt_builder.build_chat_prompt(
+            messages_payload = prompt_builder.build_chat_messages(
                 user_question=user_input,
                 history=session.messages,
                 rag_context=rag_context,
@@ -213,20 +213,19 @@ def interactive_chat(
 
             if session.debug:
                 print("\n" + "=" * 70)
-                print("🐛 DEBUG: Промпт, передаваемый в LLM:")
+                print("🐛 DEBUG: Messages payload, передаваемый в LLM:")
                 print("=" * 70)
-                print(prompt)
+                print(json.dumps(messages_payload, ensure_ascii=False, indent=2))
                 print("=" * 70 + "\n")
 
             print("\n🤖 Модель: ", end="", flush=True)
             response = ""
             first_token = True
             try:
-                for token in client.generate_stream(
-                    prompt=prompt,
+                for token in client.chat_stream(
+                    messages=messages_payload,
                     max_tokens=max_tokens,
                     temperature=temperature,
-                    stop=["<|eot_id|>"],
                 ):
                     if first_token:
                         token = clean_response_text(token, strip_spaces=True)
@@ -263,7 +262,11 @@ def single_prompt_mode(
     max_tokens: int = 1024,
 ):
     """Одиночный промпт (не интерактивный)"""
-    response = client.generate(prompt=prompt, max_tokens=max_tokens, temperature=0.7)
+    response = client.chat(
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=max_tokens,
+        temperature=0.7,
+    )
 
     print("\n" + "=" * 70)
     print("📝 Запрос:")
