@@ -1,309 +1,77 @@
-# Текущая архитектура проекта SmartTherm-помощник
+# Smart Therm Bot
 
-## Оглавление
+Telegram-бот для поддержки пользователей SmartTherm с локальной LLM (Ollama) и RAG-поиском по истории чата. Telegram bot пока не реализован.
 
-1. [Текущая архитектура](#текущая-архитектура)
-2. [Будущая архитектура](#будущая-архитектура)
-3. [Правила проекта](#правила-проекта)
-4. [Команды Makefile](#команды-makefile)
-5. [Структура данных](#структура-данных)
+## Что сейчас делает проект
 
----
+- Отвечает на технические вопросы по SmartTherm в интерактивном CLI-чате.
+- Использует локальную модель через Ollama.
+- Подключает RAG, чтобы опираться на факты из истории чата.
+- Поддерживает полный pipeline подготовки данных: фильтрация → чанки → индексация.
 
-## Текущая архитектура
+## Старт
 
-```
-smart-therm-bot/
-│
-├── configs/                        # ВСЯ конфигурация здесь
-│   └── default.yaml                # Дефолтные параметры
-│
-├── data/                           # Данные (не коммитить!)
-│   ├── raw/                        # НЕ МЕНЯТЬ! Исходные данные
-│   │   ├── chat_history.json       # Telegram чат (36K сообщений)
-│   │   ├── instruction/            # PDF инструкции
-│   │   └── repo/                   # SmartTherm репозиторий
-│   │
-│   ├── models/                     # GGUF модели (скачанные)
-│   │   └── *.gguf
-│   │
-│   ├── processed/                  # Обработанные данные
-│   │   └── chat/
-│   │       ├── messages_filtered.json    # Этап 1
-│   │       ├── threads.json              # Этап 2
-│   │       ├── chunks_rag.jsonl          # Этап 3
-│   │       ├── chunks_sample.json        # Выборка для валидации
-│   │       └── test/                     # Тестовые данные (обрезанные)
-│   │           ├── messages_test.json
-│   │           ├── threads_test.json
-│   │           └── chunks_rag_test.jsonl
-│   │
-│   └── indices/                    # Векторные индексы
-│       ├── faiss/
-│       └── bm25/
-│
-├── src/                            # Исходный код
-│   │
-│   ├── utils/                      # Общие утилиты
-│   │   ├── __init__.py
-│   │   ├── config.py               # Загрузка Config из default.yaml
-│   │   ├── json_utils.py           # extract_json_from_text()
-│   │   └── chat_format.py          # format_llama_chat_prompt()
-│   │
-│   ├── llm/                        # LLM движки
-│   │   ├── __init__.py             
-│   │   ├── base.py                 # Абстрактный LLMEngine
-│   │   ├── factory.py              # create_llm_engine()
-│   │   ├── llama_cpp_engine.py     # llama-cpp-python backend
-│   │   └── registry.py             # Реестр моделей (URL, размеры)
-│   │
-│   └── chat_processor/             # Обработка чата
-│       ├── __init__.py
-│       ├── models.py               # Pydantic модели данных
-│       ├── stage1_filter.py        # Фильтрация шума
-│       ├── stage2_threads.py       # Выделение веток
-│       └── stage3_chunks.py        # Создание RAG чанков
-│   
-│
-├── scripts/                        # Скрипты
-│   ├── download_model.py           # Скачивание моделей
-│   ├── chat.py                     # Интерактивный чат с LLM
-│   ├── process_chat_cli.py         # CLI для всех этапов обработки
-│   ├── truncate_messages.py        # Обрезка сообщений для тестов
-│   ├── test_stage1.py              # Тест Этапа 1 (отладка)
-│   └── validate_stages.py          # Валидация результатов
-│
-├── docs/                           # Документация
-│   ├── plan.md                     # План проекта
-│   └── architecture.md             # Этот файл
-│
-├── tests/                          # Тесты
-│   └── __init__.py
-│
-├── evaluation/                     # Оценка качества
-│   └── __init__.py
-│
-├── docker/                         # Docker конфигурации
-│   ├── Dockerfile
-│   └── docker-compose.yml
-│
-├── Makefile                        # Команды для разработки
-├── requirements.txt                # Зависимости
-├── requirements-dev.txt            # Dev зависимости
-├── .env.example                    # Пример переменных окружения
-└── .gitignore                      # Git ignore
-```
-
----
-
-## Будущая архитектура
-
-```
-smart-therm-bot/
-│
-├── src/
-│   ├── utils/                      # Вспомогательные функции
-│   ├── llm/                        # Добавить Ollama
-│   ├── chat_processor/             # Почти готово
-│   │
-│   ├── rag/                        
-│   │   ├── __init__.py
-│   │   ├── embeddings.py           # bge-m3 эмбеддинги
-│   │   ├── retrieval.py            # Гибридный поиск (FAISS + BM25)
-│   │   ├── reranker.py             # bge-reranker
-│   │   └── faiss_index.py          # FAISS индекс
-│   │
-│   ├── lora/                       
-│   │   ├── __init__.py
-│   │   ├── dataset.py              # Подготовка датасета
-│   │   ├── train.py                # Обучение (MLX)
-│   │   └── adapters/               # Сохранённые адаптеры
-│   │
-│   ├── bot/                        
-│   │   ├── __init__.py
-│   │   ├── main.py                 # aiogram entry point
-│   │   └── handlers.py             # Обработчики сообщений
-│   │
-│   └── api/                        
-│       ├── __init__.py
-│       ├── main.py                 # FastAPI app
-│       └── endpoints.py            # API роуты
-│
-└── data/
-    └── indices/                    # После RAG
-        ├── faiss/
-        │   ├── index.bin           # Векторный индекс
-        │   └── metadata.json       # Метаданные чанков
-        └── bm25/
-            └── index.pkl
-```
-
----
-
-## Правила разработки
-
-- **ВСЕ параметры в `configs/default.yaml`** Модель, температура, размер группы, и т.д.
-
-- **Никакого хардкода**: В коде читать из `Config.load()`
-
-- **CLI переопределяет дефолты**: `--model`, `--quantization`, и т.д.
-
-- `data/raw/`: **НЕ МЕНЯТЬ!** Только чтение
-
-- **`src/llm/` — общие функции для llm**. Без специфики для обработки данных/чата.
-
-- **`src/utils/` — утилиты**. Вспомогательные функции должны быть здесь
-
-- **`src/chat_processor/` — обработка сообщений чата**
-
-- **Stop sequences** явно передавать в `generate(stop=...)` для остановки генерации
-
-- **JSON извлечение в utils**: `extract_json_from_text()`
-
-- **Pyright: 0 errors** Перед коммитом
-
----
-
-## Команды Makefile (для дефолтной модели из default.yaml)
-
-### Модели
+1. Создать и активировать виртуальное окружение:
 
 ```bash
-# Скачать модель
-make download-model
-
-# Показать доступные
-make list-models
-
-# Интерактивный чат
-make chat
+python3 -m venv .venv
+source .venv/bin/activate
 ```
 
-### Обработка чата
+2. Установить зависимости:
 
 ```bash
-# Все этапы (с дефолтной моделью из default.yaml)
-make process-all
-
-# Отдельные этапы
-make process-stage1      # Фильтрация шума
-make process-stage2      # Выделение веток (с --debug)
-make process-stage3      # Создание RAG чанков
-
-# Тестирование на обрезанных данных (250 сообщений)
-make truncate            # Обрезать сообщения до 250
-make truncate-n N=100    # Обрезать до N сообщений
-make test-all            # Полный тест: truncate + stage2 + stage3
-
-# Валидация
-make validate            # Проверка результатов
+pip install -r requirements.txt
 ```
 
-### Прочее
+3. Подготовить Ollama и модель из конфига:
 
 ```bash
+ollama serve
+ollama pull qwen3.5:9b
+```
 
-# Установка зависимостей
-make install         # Основные
-make install-dev     # + dev
+4. Посмотреть доступные команды:
 
-# Очистка
-make clean           # Обработанные данные
-make clean-models    # Модели
-make clean-all       # Всё
-
-# Тест LLM (registry)
-make test-llm
-
-# Помощь
+```bash
 make help
 ```
 
----
+## Сценарий работы
 
-## Структура данных
-
-### Этапы обработки чата
-
-```
-Этап 1: Фильтрация
-  Вход:  data/raw/chat_history.json (36K сообщений)
-  Выход: data/processed/chat/messages_filtered.json
-  Логика: Удаление сервисных, эмодзи, флуда, дубликатов
-
-Этап 2: Выделение веток
-  Вход:  messages_filtered.json
-  Выход: data/processed/chat/threads.json
-  Логика: LLM выделяет независимые ветки обсуждения
-
-Этап 3: RAG чанки
-  Вход:  threads.json + messages_filtered.json
-  Выход: data/processed/chat/chunks_rag.jsonl
-  Логика: Создание чанков {topic, knowledge, metadata}
+```bash
+make chat-filter
+make chat-chunks
+make reindex
+make chat
 ```
 
-### Тестирование на обрезанных данных
+Быстрый запуск чата с RAG:
 
-```
-truncate: Обрезка сообщений
-  Вход:  data/processed/chat/messages_filtered.json
-  Выход: data/processed/chat/test/messages_test.json (250 сообщений)
-
-test-all: Полный тест
-  messages_test.json → stage2 → threads_test.json
-  threads_test.json + messages_test.json → stage3 → chunks_rag_test.jsonl
+```bash
+python scripts/chat.py --rag
 ```
 
-### Формат чанка (JSONL)
+## Полезные команды
 
-```json
-{
-  "chunk_id": "tg_t001_0",
-  "source": {
-    "type": "telegram",
-    "message_ids": [12345, 12346],
-    "date_range": "2024-01-15 — 2024-01-17"
-  },
-  "content": {
-    "summary": "Подключение контроллера к котлу Navien",
-    "text": "При подключении котла Navien через OpenTherm..."
-  },
-  "metadata": {
-    "tags": ["opentherm", "navien", "connection"],
-    "version": "0.73",
-    "confidence": 0.9,
-  }
-}
-```
+- `make process-chat` — фильтрация и создание чанков одним шагом.
+- `make reindex` — переиндексация RAG.
+- `make truncate` / `make truncate-n N=100` — подготовка укороченного датасета для тестов.
+- `make test` — запуск тестов.
+- `make clean` — очистка обработанных данных и индексов.
 
----
+## Конфигурация
 
-## Конфигурация (configs/default.yaml)
+- `configs/default.yaml` — основные параметры проекта (LLM, RAG, обработка, bot/server).
+- `configs/prompts.yaml` — централизованные шаблоны промптов.
 
-```yaml
-# LLM настройки
-llm:
-  model: "..."  # ДЕФОЛТНАЯ LLM
-  quantization: "..." # дефолтное квантование
-  temperature: 0.3
-  max_tokens: 2048
-  context_size: 8192
-  
-  # Параметры для этапов
-  stage1:
-    temperature: 0.5
-    max_tokens: 1000
-  stage2:
-    temperature: 0.1
-    max_tokens: 50
-  stage3:
-    temperature: 0.5
-    max_tokens: 2048
+Изменяйте параметры через конфиг, без хардкода.
 
-# Параметры обработки чата
-chat_processing:
-  group_size: 50
-  overlap_size: 5
-  min_message_length: 10
-  stop_words: [...]
-```
+## Структура проекта
+
+- `scripts/` — CLI-скрипты для чата, обработки и индексации.
+- `src/data_processing/` — фильтрация сообщений и формирование чанков.
+- `src/rag/` — индексация и гибридный retrieval.
+- `src/llm/` — клиент работы с Ollama.
+- `src/utils/` — конфигурация и сборка промптов.
+- `data/` — сырые/обработанные данные и индексы.

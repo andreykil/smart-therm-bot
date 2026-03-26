@@ -30,26 +30,27 @@ class Config(BaseModel):
     
     # LLM настройки
     llm: dict = Field(default_factory=lambda: {
-        "provider": "local",  # local, ollama, vllm
-        "model": "vikhr-nemo-12b-instruct-r",  # ДЕФОЛТНАЯ LLM
-        "quantization": "Q8_0",
+        "provider": "ollama",
+        "model": "llama3.1",  # ДЕФОЛТНАЯ LLM
+        "base_url": "http://localhost:11434",
         "temperature": 0.3,
         "max_tokens": 2048,
         "context_size": 8192,
-        "stage1": {"temperature": 0.5, "max_tokens": 1000},
-        "stage2": {"temperature": 0.1, "max_tokens": 50},
-        "stage3": {"temperature": 0.5, "max_tokens": 2048},
     })
     
     # Параметры обработки чата
     chat_processing: dict = Field(default_factory=lambda: {
         "group_size": 50,
         "overlap_size": 5,
-        "min_message_length": 10,
         "stop_words": [
             "спасибо", "ок", "понял", "благодарю", "+", "да",
             "спс", "благодарка", "круто", "супер", "хорошо"
         ],
+    })
+    
+    # Truncate настройки
+    truncate: dict = Field(default_factory=lambda: {
+        "limit": 20,
     })
     
     # Bot настройки

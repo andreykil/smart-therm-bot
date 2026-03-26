@@ -8,7 +8,13 @@
 import argparse
 import json
 import logging
+import sys
 from pathlib import Path
+
+# Добавить src в path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.utils.config import Config
 
 logging.basicConfig(
     level=logging.INFO,
@@ -20,7 +26,7 @@ logger = logging.getLogger(__name__)
 def truncate_messages(
     input_path: Path,
     output_path: Path,
-    limit: int = 95
+    limit: int = 100
 ) -> dict:
     """
     Обрезать сообщения до заданного числа
@@ -48,7 +54,6 @@ def truncate_messages(
         truncated_messages = data["messages"][:limit]
         logger.info(f"Обрезка до {limit} сообщений")
 
-    # Создание выходного файла в формате stage1_filter.py
     # Сохраняем только messages массив для совместимости
     output_data = {
         "messages": truncated_messages
@@ -90,29 +95,31 @@ def main():
         "--output", "-o",
         type=Path,
         default=None,
-        help="Выходной файл (по умолчанию: data/processed/chat/test/messages_test.json)"
+        help="Выходной файл (по умолчанию: data/processed/chat/test/messages_filtered_test.json)"
     )
 
     parser.add_argument(
         "--limit", "-n",
         type=int,
-        default=250,
-        help="Максимальное число сообщений (по умолчанию: 250)"
+        default=None,
+        help=f"Максимальное число сообщений (по умолчанию: из конфига)"
     )
 
     args = parser.parse_args()
 
-    # Дефолтные пути
+    # Дефолтные пути и значения из конфига
     project_root = Path(__file__).parent.parent
+    config = Config.load()
     input_path = args.input or project_root / "data" / "processed" / "chat" / "messages_filtered.json"
-    output_path = args.output or project_root / "data" / "processed" / "chat" / "test" / "messages_test.json"
+    output_path = args.output or project_root / "data" / "processed" / "chat" / "test" / "messages_filtered_test.json"
+    limit = args.limit if args.limit is not None else config.truncate.get("limit", 20)
 
     if not input_path.exists():
         logger.error(f"Файл не найден: {input_path}")
-        logger.error("Сначала запустите: make process-stage0")
+        logger.error("Сначала запустите: make chat-filter")
         return 1
 
-    truncate_messages(input_path, output_path, args.limit)
+    truncate_messages(input_path, output_path, limit)
 
     return 0
 
