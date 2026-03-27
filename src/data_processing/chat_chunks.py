@@ -17,9 +17,37 @@ from .models import FilteredMessage, Group, RAGChunk, ChunkContent, ChunkMetadat
 from ..llm import OllamaClient
 from ..utils.config import Config
 from ..utils.text_utils import extract_json_from_text
-from ..utils.prompt_builder import PromptBuilder
+from ..utils.prompt_manager import PromptManager
 
 logger = logging.getLogger(__name__)
+
+
+def _format_chunk_messages(group_messages: list[FilteredMessage]) -> str:
+    """Сформировать текст сообщений группы для chunk_creation."""
+    return "\n".join(
+        f"[{str(message.date)[:10]}] {message.from_}: {message.text}"
+        for message in group_messages
+    )
+
+
+def build_chunk_creation_messages(
+    group_messages: list[FilteredMessage],
+    last_message_date: str,
+    prompt_manager: PromptManager | None = None,
+) -> list[dict[str, str]]:
+    """Собрать messages для создания RAG чанка напрямую через PromptManager."""
+    manager = prompt_manager or PromptManager()
+    messages_text = _format_chunk_messages(group_messages)
+    system_prompt = manager.get_prompt("chunk_creation_system")
+    user_prompt = manager.get_prompt(
+        "chunk_creation_user",
+        messages_text=messages_text,
+        date=last_message_date,
+    )
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
 
 def load_filtered_messages(path: Path) -> list[FilteredMessage]:
     """Загрузить отфильтрованные сообщения"""
@@ -139,9 +167,7 @@ def create_chunk_from_group(
         logger.warning(f"Группа {group.group_id} не имеет сообщений")
         return None
 
-    # Формирование messages через PromptBuilder
-    prompt_builder = PromptBuilder()
-    messages_payload = prompt_builder.build_chunk_creation_messages(
+    messages_payload = build_chunk_creation_messages(
         group_messages=group_messages,
         last_message_date=last_message_date,
     )

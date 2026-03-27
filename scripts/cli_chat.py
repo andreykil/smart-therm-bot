@@ -1,0 +1,218 @@
+#!/usr/bin/env python3
+"""CLI transport для универсального chat application."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+# Добавить корень проекта в path для импорта src.*
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.chat.bootstrap import ChatApp, build_chat_app
+from src.chat.commands import CommandParser
+from src.utils.config import Config
+
+
+def build_cli_parser() -> argparse.ArgumentParser:
+    """Создать parser для CLI transport."""
+    parser = argparse.ArgumentParser(
+        description="Интерактивный чат с LLM моделями через Ollama",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Примеры:
+  %(prog)s
+  %(prog)s --model llama3.1 --prompt \"Как прошить?\"
+        """,
+    )
+    parser.add_argument("--model", "-m", type=str, default=None, help="Название модели в Ollama")
+    parser.add_argument("--url", "-u", type=str, default=None, help="URL Ollama сервера")
+    parser.add_argument("--max-tokens", "-t", type=int, default=1024, help="Максимум токенов на ответ")
+    parser.add_argument("--prompt", "-p", type=str, help="Один ход без интерактивного режима")
+    parser.add_argument("--output", "-o", type=str, help="Файл для сохранения ответа")
+    parser.add_argument("--system", "-s", type=str, default=None, help="Переопределение системного промпта")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Включить подробное логирование")
+    parser.add_argument("--rag", action="store_true", help="Включить RAG поиск")
+    parser.add_argument("--top-k", "-k", type=int, default=None, help="Количество результатов RAG")
+    parser.add_argument("--vector-weight", type=float, default=0.5, help="Вес FAISS в гибридном поиске")
+    parser.add_argument("--bm25-weight", type=float, default=0.5, help="Вес BM25 в гибридном поиске")
+    parser.add_argument(
+        "--chunks-file",
+        type=str,
+        default=None,
+        help="Путь к JSONL файлу чанков для переиндексации перед запуском RAG",
+    )
+    parser.add_argument(
+        "--test",
+        action="store_true",
+        help="Использовать тестовые чанки (data/processed/chat/test/chunks_rag_test.jsonl)",
+    )
+    parser.add_argument("--debug", action="store_true", help="Выводить payload, передаваемый в LLM")
+    return parser
+
+
+def _print_debug_payload(payload: object) -> None:
+    print("\n" + "=" * 70)
+    print("🐛 DEBUG: Messages payload, передаваемый в LLM:")
+    print("=" * 70)
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    print("=" * 70)
+
+
+def _banner_lines(app: ChatApp) -> list[str]:
+    rag_status = "✅ RAG" if app.runtime.use_rag else "❌ RAG"
+    system_prompt = app.service.prompting.get_system_prompt(
+        use_rag=app.runtime.use_rag,
+        system_prompt_override=app.runtime.system_prompt_override,
+    )
+    lines = [
+        "\n" + "=" * 70,
+        f"💬 {app.service.model_name} — Интерактивный чат (Ollama) [{rag_status}]",
+        "=" * 70,
+        f"Системный промпт: {system_prompt[:70]}...",
+    ]
+
+    rag_stats = app.service.get_stats().get("rag")
+    if app.runtime.use_rag and isinstance(rag_stats, dict):
+        weights = rag_stats.get("weights", {})
+        lines.append(
+            f"📚 RAG: {rag_stats.get('total_chunks', 0)} чанков, "
+            f"веса FAISS={weights.get('vector', 0.0):.2f}, BM25={weights.get('bm25', 0.0):.2f}"
+        )
+
+    lines.append("")
+    lines.extend(app.commands.command_lines())
+    lines.append("  /exit             — выйти")
+    lines.append("=" * 70)
+    lines.append("")
+    return lines
+
+
+def _run_prompt_mode(app: ChatApp, prompt: str, output_file: str | None = None) -> None:
+    """Выполнить одиночный non-stream ход через общий chat flow."""
+    request = app.runtime.build_request(prompt)
+    prepared = app.service.prepare_turn(request) if app.runtime.debug else None
+    if prepared is not None:
+        _print_debug_payload(prepared.llm_messages)
+    response = app.service.run_turn(request, prepared=prepared)
+
+    print("\n" + "=" * 70)
+    print("📝 Запрос:")
+    print(prompt)
+    print()
+    print("🤖 Ответ:")
+    print(response.assistant_message)
+    print("=" * 70)
+
+    if output_file:
+        with open(output_file, "w", encoding="utf-8") as file:
+            file.write(f"Запрос:\n{prompt}\n\nОтвет:\n{response.assistant_message}\n")
+        print(f"💾 Сохранено: {output_file}")
+
+
+def run_interactive_chat(app: ChatApp) -> None:
+    """Интерактивный CLI loop поверх универсального chat application."""
+    for line in _banner_lines(app):
+        print(line)
+
+    while True:
+        try:
+            user_input = input("👤 Вы: ").strip()
+            if not user_input:
+                continue
+
+            if user_input == "/exit":
+                print("👋 До свидания!")
+                break
+
+            if CommandParser.is_command(user_input):
+                result = app.commands.execute(user_input)
+                for line in result.lines:
+                    print(line)
+                continue
+
+            request = app.runtime.build_request(user_input)
+            prepared = app.service.prepare_turn(request) if app.runtime.debug else None
+            if prepared is not None:
+                _print_debug_payload(prepared.llm_messages)
+
+            print("\n🤖 Модель: ", end="", flush=True)
+            for event in app.service.stream_turn(request, prepared=prepared):
+                if event.kind == "token" and event.text:
+                    print(event.text, end="", flush=True)
+
+            print()
+            print()
+        except KeyboardInterrupt:
+            print("\n\n👋 Прервано. Для выхода используйте /exit")
+        except Exception as error:
+            print(f"\n❌ Ошибка: {error}")
+
+
+def run_cli(argv: list[str] | None = None) -> None:
+    """Точка входа CLI transport."""
+    args = build_cli_parser().parse_args(argv)
+    config = Config.load()
+
+    model_name = args.model or config.llm.get("model") or "llama3.1"
+    base_url = args.url or config.llm.get("base_url", "http://localhost:11434")
+    temperature = config.llm.get("temperature", 0.7)
+    think = config.llm.get("think")
+    top_k = args.top_k if args.top_k is not None else config.rag.get("top_k", 5)
+
+    print(f"🔄 Подключение к Ollama: {base_url}")
+    print(f"📦 Модель: {model_name}")
+    if think is not None:
+        print(f"🧠 Think mode: {think}")
+
+    try:
+        app = build_chat_app(
+            config=config,
+            model_name=model_name,
+            base_url=base_url,
+            max_tokens=args.max_tokens,
+            temperature=temperature,
+            use_rag=args.rag,
+            system_prompt_override=args.system,
+            debug=args.debug,
+            verbose=args.verbose,
+            think=think,
+            top_k=top_k,
+            vector_weight=args.vector_weight,
+            bm25_weight=args.bm25_weight,
+            chunks_file=args.chunks_file,
+            test_mode=args.test,
+        )
+    except Exception as error:
+        print(f"❌ Ошибка подключения: {error}")
+        print()
+        print("Убедитесь, что Ollama запущен:")
+        print("   ollama serve")
+        print()
+        print("Или установите модель:")
+        print(f"   ollama pull {model_name}")
+        sys.exit(1)
+
+    print("✅ Подключение успешно")
+    if args.rag and not app.runtime.use_rag:
+        print("⚠️  RAG недоступен. Чат запущен без RAG.")
+        if app.rag_error:
+            print(f"   Причина: {app.rag_error}")
+    print()
+
+    if args.prompt:
+        _run_prompt_mode(app, args.prompt, args.output)
+        return
+
+    run_interactive_chat(app)
+
+
+def main(argv: list[str] | None = None) -> None:
+    """Совместимый entrypoint CLI-скрипта."""
+    run_cli(argv)
+
+
+if __name__ == "__main__":
+    main()

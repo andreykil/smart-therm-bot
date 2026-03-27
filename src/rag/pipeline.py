@@ -231,7 +231,7 @@ class RAGPipeline:
 
         # Загружаем индексы если нужно
         if not self._indices_loaded:
-            loaded = self._load_indices()
+            loaded = self.ensure_indices_loaded()
             if not loaded:
                 return SearchResult(
                     chunks=[],
@@ -245,6 +245,12 @@ class RAGPipeline:
             top_k=top_k,
             use_reranker=use_reranker
         )
+
+    def ensure_indices_loaded(self) -> bool:
+        """Публично обеспечить загрузку индексов перед retrieval."""
+        if self._indices_loaded:
+            return True
+        return self._load_indices()
 
     def _load_indices(self) -> bool:
         """Загрузить индексы с диска"""

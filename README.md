@@ -49,7 +49,7 @@ make chat
 Быстрый запуск чата с RAG:
 
 ```bash
-python scripts/chat.py --rag
+python scripts/cli_chat.py --rag
 ```
 
 ## Полезные команды
