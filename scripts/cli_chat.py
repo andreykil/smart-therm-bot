@@ -5,15 +5,18 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
+import sys
 
-# Добавить корень проекта в path для импорта src.*
-sys.path.insert(0, str(Path(__file__).parent.parent))
+if __package__ in {None, ""}:
+    project_root = Path(__file__).resolve().parent.parent
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
 
-from src.chat.bootstrap import ChatApp, build_chat_app
-from src.chat.commands import CommandParser
-from src.utils.config import Config
+from src.chat.application.command_service import CommandParser
+from src.chat.application.session_facade import SessionFacade
+from src.chat.composition import build_chat_session
+from src.config import Config
 
 
 def build_cli_parser() -> argparse.ArgumentParser:
@@ -24,7 +27,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
         epilog="""
 Примеры:
   %(prog)s
-  %(prog)s --model llama3.1 --prompt \"Как прошить?\"
+  %(prog)s --model llama3.1 --prompt "Как прошить?"
         """,
     )
     parser.add_argument("--model", "-m", type=str, default=None, help="Название модели в Ollama")
@@ -61,21 +64,18 @@ def _print_debug_payload(payload: object) -> None:
     print("=" * 70)
 
 
-def _banner_lines(app: ChatApp) -> list[str]:
-    rag_status = "✅ RAG" if app.runtime.use_rag else "❌ RAG"
-    system_prompt = app.service.prompting.get_system_prompt(
-        use_rag=app.runtime.use_rag,
-        system_prompt_override=app.runtime.system_prompt_override,
-    )
+def _banner_lines(session: SessionFacade) -> list[str]:
+    rag_status = "✅ RAG" if session.rag_enabled else "❌ RAG"
+    system_prompt = session.system_prompt()
     lines = [
         "\n" + "=" * 70,
-        f"💬 {app.service.model_name} — Интерактивный чат (Ollama) [{rag_status}]",
+        f"💬 {session.model_name} — Интерактивный чат (Ollama) [{rag_status}]",
         "=" * 70,
         f"Системный промпт: {system_prompt[:70]}...",
     ]
 
-    rag_stats = app.service.get_stats().get("rag")
-    if app.runtime.use_rag and isinstance(rag_stats, dict):
+    rag_stats = session.get_stats().get("rag")
+    if session.rag_enabled and isinstance(rag_stats, dict):
         weights = rag_stats.get("weights", {})
         lines.append(
             f"📚 RAG: {rag_stats.get('total_chunks', 0)} чанков, "
@@ -83,20 +83,21 @@ def _banner_lines(app: ChatApp) -> list[str]:
         )
 
     lines.append("")
-    lines.extend(app.commands.command_lines())
+    lines.extend(session.command_lines())
     lines.append("  /exit             — выйти")
     lines.append("=" * 70)
     lines.append("")
     return lines
 
 
-def _run_prompt_mode(app: ChatApp, prompt: str, output_file: str | None = None) -> None:
-    """Выполнить одиночный non-stream ход через общий chat flow."""
-    request = app.runtime.build_request(prompt)
-    prepared = app.service.prepare_turn(request) if app.runtime.debug else None
+def _run_prompt_mode(session: SessionFacade, prompt: str, output_file: str | None = None) -> None:
+    prepared = None
+    request = session.build_request(prompt)
+    if session.runtime.debug:
+        request, prepared = session.prepare_request(prompt)
     if prepared is not None:
         _print_debug_payload(prepared.llm_messages)
-    response = app.service.run_turn(request, prepared=prepared)
+    response = session.run_request(request, prepared=prepared)
 
     print("\n" + "=" * 70)
     print("📝 Запрос:")
@@ -112,9 +113,8 @@ def _run_prompt_mode(app: ChatApp, prompt: str, output_file: str | None = None) 
         print(f"💾 Сохранено: {output_file}")
 
 
-def run_interactive_chat(app: ChatApp) -> None:
-    """Интерактивный CLI loop поверх универсального chat application."""
-    for line in _banner_lines(app):
+def run_interactive_chat(session: SessionFacade) -> None:
+    for line in _banner_lines(session):
         print(line)
 
     while True:
@@ -128,18 +128,22 @@ def run_interactive_chat(app: ChatApp) -> None:
                 break
 
             if CommandParser.is_command(user_input):
-                result = app.commands.execute(user_input)
+                result = session.try_execute_command(user_input)
+                if result is None:
+                    continue
                 for line in result.lines:
                     print(line)
                 continue
 
-            request = app.runtime.build_request(user_input)
-            prepared = app.service.prepare_turn(request) if app.runtime.debug else None
+            prepared = None
+            request = session.build_request(user_input)
+            if session.runtime.debug:
+                request, prepared = session.prepare_request(user_input)
             if prepared is not None:
                 _print_debug_payload(prepared.llm_messages)
 
             print("\n🤖 Модель: ", end="", flush=True)
-            for event in app.service.stream_turn(request, prepared=prepared):
+            for event in session.stream_request(request, prepared=prepared):
                 if event.kind == "token" and event.text:
                     print(event.text, end="", flush=True)
 
@@ -152,15 +156,14 @@ def run_interactive_chat(app: ChatApp) -> None:
 
 
 def run_cli(argv: list[str] | None = None) -> None:
-    """Точка входа CLI transport."""
     args = build_cli_parser().parse_args(argv)
     config = Config.load()
 
-    model_name = args.model or config.llm.get("model") or "llama3.1"
-    base_url = args.url or config.llm.get("base_url", "http://localhost:11434")
-    temperature = config.llm.get("temperature", 0.7)
-    think = config.llm.get("think")
-    top_k = args.top_k if args.top_k is not None else config.rag.get("top_k", 5)
+    model_name = args.model or config.llm.model
+    base_url = args.url or config.llm.base_url
+    temperature = config.llm.temperature
+    think = config.llm.think
+    top_k = args.top_k if args.top_k is not None else config.rag.top_k
 
     print(f"🔄 Подключение к Ollama: {base_url}")
     print(f"📦 Модель: {model_name}")
@@ -168,7 +171,7 @@ def run_cli(argv: list[str] | None = None) -> None:
         print(f"🧠 Think mode: {think}")
 
     try:
-        app = build_chat_app(
+        session = build_chat_session(
             config=config,
             model_name=model_name,
             base_url=base_url,
@@ -196,21 +199,20 @@ def run_cli(argv: list[str] | None = None) -> None:
         sys.exit(1)
 
     print("✅ Подключение успешно")
-    if args.rag and not app.runtime.use_rag:
+    if args.rag and not session.rag_enabled:
         print("⚠️  RAG недоступен. Чат запущен без RAG.")
-        if app.rag_error:
-            print(f"   Причина: {app.rag_error}")
+        if session.rag_error:
+            print(f"   Причина: {session.rag_error}")
     print()
 
     if args.prompt:
-        _run_prompt_mode(app, args.prompt, args.output)
+        _run_prompt_mode(session, args.prompt, args.output)
         return
 
-    run_interactive_chat(app)
+    run_interactive_chat(session)
 
 
 def main(argv: list[str] | None = None) -> None:
-    """Совместимый entrypoint CLI-скрипта."""
     run_cli(argv)
 
 

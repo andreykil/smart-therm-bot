@@ -15,9 +15,9 @@ from pathlib import Path
 
 from .models import FilteredMessage, Group, RAGChunk, ChunkContent, ChunkMetadata
 from ..llm import OllamaClient
-from ..utils.config import Config
 from ..utils.text_utils import extract_json_from_text
 from ..utils.prompt_manager import PromptManager
+from src.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +147,7 @@ def create_chunk_from_group(
     messages: dict[int, FilteredMessage],
     llm: OllamaClient,
     last_message_date: str,
+    prompt_manager: PromptManager | None = None,
     max_tokens: int = 2048,
     temperature: float = 0.5
 ) -> RAGChunk | None:
@@ -170,6 +171,7 @@ def create_chunk_from_group(
     messages_payload = build_chunk_creation_messages(
         group_messages=group_messages,
         last_message_date=last_message_date,
+        prompt_manager=prompt_manager,
     )
 
     logger.debug(f"Создание чанков для {group.group_id}...")
@@ -242,8 +244,8 @@ def run_chunks(
     chat_cfg = config.chat_processing
     groups = create_groups(
         messages_list,
-        chat_cfg.get("group_size", 50),
-        chat_cfg.get("overlap_size", 5)
+        chat_cfg.group_size,
+        chat_cfg.overlap_size,
     )
 
     # Сохранение групп (опционально)
@@ -254,13 +256,13 @@ def run_chunks(
 
     # Инициализация LLM
     if llm is None:
-        model_name = config.llm.get("model") or "llama3.1"
+        model_name = config.llm.model
         logger.info(f"Инициализация Ollama: {model_name}")
         llm = OllamaClient(
             model=model_name,
-            base_url=config.llm.get("base_url", "http://localhost:11434"),
+            base_url=config.llm.base_url,
             verbose=False,
-            think=config.llm.get("think")
+            think=config.llm.think,
         )
 
         if not llm.model_exists():
@@ -271,6 +273,7 @@ def run_chunks(
 
     # Создание чанков
     messages_dict = {msg.id: msg for msg in messages_list}
+    prompt_manager = PromptManager()
     chunks = []
     stats = {
         "groups_processed": 0,
@@ -288,8 +291,9 @@ def run_chunks(
             messages=messages_dict,
             llm=llm,
             last_message_date=last_date,
-            max_tokens=config.llm.get("max_tokens") or 2048,
-            temperature=config.llm.get("temperature") or 0.5
+            prompt_manager=prompt_manager,
+            max_tokens=config.llm.max_tokens,
+            temperature=config.llm.temperature,
         )
 
         if chunk:

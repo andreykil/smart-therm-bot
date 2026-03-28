@@ -4,16 +4,15 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 
+from src.chat.domain.models import DialogMemoryFact
 from src.utils.prompt_manager import PromptManager
-
-from .models import ChatMessage
 
 
 class ChatPrompting:
     """Сборка chat messages и выбор chat prompt policy."""
 
-    def __init__(self, prompt_manager: PromptManager | None = None):
-        self.prompt_manager = prompt_manager or PromptManager()
+    def __init__(self, *, prompt_manager: PromptManager):
+        self.prompt_manager = prompt_manager
 
     def get_system_prompt(self, use_rag: bool, system_prompt_override: str | None = None) -> str:
         """Получить системный промпт для текущего режима чата."""
@@ -25,9 +24,24 @@ class ChatPrompting:
         policy = self.prompt_manager.get_prompt(policy_name)
         return f"{base}\n\n{policy}".strip()
 
-    def build_user_message(self, user_question: str, rag_context: str | None = None, use_rag: bool = False) -> str:
+    def build_user_message(
+        self,
+        user_question: str,
+        rag_context: str | None = None,
+        use_rag: bool = False,
+        facts: Iterable[DialogMemoryFact] | None = None,
+    ) -> str:
         """Собрать финальный user block для модели."""
         user_blocks: list[str] = []
+
+        memory_context = self.render_memory_context(facts or [])
+        if memory_context and memory_context.strip():
+            memory_block = self.prompt_manager.get_prompt(
+                "chat_memory_block",
+                memory_context=memory_context.strip(),
+            ).strip()
+            if memory_block:
+                user_blocks.append(memory_block)
 
         if use_rag and rag_context and rag_context.strip():
             context_block = self.prompt_manager.get_prompt(
@@ -45,17 +59,21 @@ class ChatPrompting:
 
         return "\n\n".join(user_blocks)
 
-    def normalize_history(self, history: Iterable[ChatMessage | Mapping[str, object]]) -> list[dict[str, str]]:
+    @staticmethod
+    def render_memory_context(facts: Iterable[DialogMemoryFact]) -> str:
+        """Сконвертировать raw facts в текстовый контекст для prompt."""
+        normalized_facts = [fact for fact in facts if fact.value.strip()]
+        if not normalized_facts:
+            return ""
+        return "\n".join(f"- {fact.key}: {fact.value}" for fact in normalized_facts)
+
+    def normalize_history(self, history: Iterable[Mapping[str, object]]) -> list[dict[str, str]]:
         """Нормализовать историю до user/assistant сообщений для LLM."""
         normalized: list[dict[str, str]] = []
 
         for message in history:
-            if isinstance(message, ChatMessage):
-                role = message.role
-                content = message.content.strip()
-            else:
-                role = str(message.get("role", "")).strip().lower()
-                content = str(message.get("content", "")).strip()
+            role = str(message.get("role", "")).strip().lower()
+            content = str(message.get("content", "")).strip()
 
             if role not in {"user", "assistant"}:
                 continue
@@ -69,9 +87,10 @@ class ChatPrompting:
     def build_chat_messages(
         self,
         user_question: str,
-        history: Iterable[ChatMessage | Mapping[str, object]],
+        history: Iterable[Mapping[str, object]],
         *,
         rag_context: str | None = None,
+        facts: Iterable[DialogMemoryFact] | None = None,
         use_rag: bool = False,
         system_prompt_override: str | None = None,
     ) -> list[dict[str, str]]:
@@ -83,6 +102,7 @@ class ChatPrompting:
         user_message = self.build_user_message(
             user_question=user_question,
             rag_context=rag_context,
+            facts=facts,
             use_rag=use_rag,
         )
 

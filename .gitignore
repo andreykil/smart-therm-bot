@@ -3,10 +3,12 @@ data/raw/*
 data/processed/*
 data/indices/*
 data/models/*
+data/runtime/*
 
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/indices/.gitkeep
+!data/runtime/.gitkeep
 
 !data/processed/chat/
 !data/raw/chat_history.json

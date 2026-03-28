@@ -51,6 +51,13 @@ bot:
   token: ""  # TELEGRAM_BOT_TOKEN из .env
   admin_ids: []
 
+# Persistent memory
+memory:
+  sqlite_path: "data/runtime/chat_memory.sqlite3"
+  session_cache_limit: 12
+  registry_max_contexts: 1000
+  registry_idle_ttl_seconds: 3600
+
 # Server настройки
 server:
   host: "0.0.0.0"

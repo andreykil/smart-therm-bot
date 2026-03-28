@@ -1,7 +1,31 @@
 from collections.abc import Iterable
+from pathlib import Path
+import tempfile
 
-from src.chat import ChatService, ChatSession, ChatTurnRequest
-from src.rag.models import ChunkContent, ChunkMetadata, RAGChunk, SearchResult
+from src.chat.application.chat_service import ChatService
+from src.chat.application.dto import ChatTurnRequest
+from src.chat.domain.models import RetrievalResult, RetrievedChunk
+from src.chat.prompting import ChatPrompting
+from src.memory.sqlite_dialog_state import SQLiteDialogState
+from src.memory.sqlite_repository import SQLiteMemoryRepository
+from src.utils.prompt_manager import PromptManager
+
+from tests.helpers.in_memory_dialog_state import InMemoryDialogState
+
+
+def build_prompting() -> ChatPrompting:
+    return ChatPrompting(
+        prompt_manager=PromptManager(
+            prompts={
+                "chat_system_base": "SYSTEM BASE",
+                "chat_with_rag_policy": "RAG POLICY",
+                "chat_without_rag_policy": "NO RAG POLICY",
+                "chat_memory_block": "ПАМЯТЬ:\n{memory_context}",
+                "chat_context_block": "КОНТЕКСТ ИЗ БАЗЫ ЗНАНИЙ:\n{rag_context}",
+                "chat_question_block": "ВОПРОС:\n{user_question}",
+            }
+        )
+    )
 
 
 class FakeClient:
@@ -60,21 +84,23 @@ class FakeRAG:
     def __init__(self) -> None:
         self.queries: list[tuple[str, int | None]] = []
 
-    def search(self, query: str, top_k: int | None = None, use_reranker: bool = False) -> SearchResult:
+    def search(self, query: str, top_k: int | None = None, use_reranker: bool = False) -> RetrievalResult:
         del use_reranker
         self.queries.append((query, top_k))
-        chunk = RAGChunk(
-            content=ChunkContent(text="Полезный факт", code=""),
-            metadata=ChunkMetadata(date="2024-01-01", tags=["wifi"], version=None, confidence=0.9),
+        chunk = RetrievedChunk(
+            text="Полезный факт",
+            source="telegram chat",
+            tags=("wifi",),
+            confidence=0.9,
         )
-        return SearchResult(chunks=[chunk], query=query, total_found=1, reranked=False)
+        return RetrievalResult(chunks=(chunk,), query=query, total_found=1, reranked=False)
 
     def get_stats(self) -> dict:
         return {"total_chunks": 1, "weights": {"vector": 0.5, "bm25": 0.5}}
 
 
 class MisconfiguredRAG:
-    def search(self, query: str, top_k: int | None = None, use_reranker: bool = False) -> SearchResult:
+    def search(self, query: str, top_k: int | None = None, use_reranker: bool = False) -> RetrievalResult:
         del query, top_k, use_reranker
         raise ValueError("missing FAISS index path")
 
@@ -83,7 +109,7 @@ class MisconfiguredRAG:
 
 
 class BrokenRAG:
-    def search(self, query: str, top_k: int | None = None, use_reranker: bool = False) -> SearchResult:
+    def search(self, query: str, top_k: int | None = None, use_reranker: bool = False) -> RetrievalResult:
         del query, top_k, use_reranker
         raise RuntimeError("faiss search crashed")
 
@@ -91,10 +117,19 @@ class BrokenRAG:
         return {}
 
 
+def build_dialog_state() -> SQLiteDialogState:
+    db_dir = Path(tempfile.mkdtemp())
+    return SQLiteDialogState(
+        SQLiteMemoryRepository(db_dir / "memory.sqlite3"),
+        dialog_key="chat:42",
+        history_window=12,
+    )
+
+
 def test_chat_service_runs_non_stream_turn_with_rag() -> None:
     client = FakeClient()
     rag = FakeRAG()
-    service = ChatService(client, session=ChatSession(), rag_pipeline=rag, top_k=3)
+    service = ChatService(client, state=InMemoryDialogState(), prompting=build_prompting(), retriever=rag, top_k=3)
 
     response = service.run_turn(
         ChatTurnRequest(
@@ -110,12 +145,12 @@ def test_chat_service_runs_non_stream_turn_with_rag() -> None:
     assert rag.queries == [("Как подключить WiFi?", 3)]
     assert client.chat_calls[0]["messages"][0]["role"] == "system"
     assert "КОНТЕКСТ ИЗ БАЗЫ ЗНАНИЙ" in client.chat_calls[0]["messages"][-1]["content"]
-    assert len(service.session.messages) == 2
+    assert len(service.history) == 2
 
 
 def test_chat_service_stream_turn_updates_session_and_emits_final_event() -> None:
     client = FakeClient()
-    service = ChatService(client, session=ChatSession())
+    service = ChatService(client, state=InMemoryDialogState(), prompting=build_prompting())
 
     events = list(
         service.stream_turn(
@@ -133,13 +168,13 @@ def test_chat_service_stream_turn_updates_session_and_emits_final_event() -> Non
     assert events[-1].kind == "final"
     assert events[-1].response is not None
     assert events[-1].response.assistant_message == "Поток"
-    assert service.session.messages[1].content == "Поток"
+    assert service.history[1].content == "Поток"
 
 
 def test_prepare_turn_is_reused_without_double_rag_query() -> None:
     client = FakeClient()
     rag = FakeRAG()
-    service = ChatService(client, session=ChatSession(), rag_pipeline=rag, top_k=4)
+    service = ChatService(client, state=InMemoryDialogState(), prompting=build_prompting(), retriever=rag, top_k=4)
 
     request = ChatTurnRequest(
         user_message="Нужен совет по WiFi",
@@ -158,7 +193,7 @@ def test_prepare_turn_is_reused_without_double_rag_query() -> None:
 
 
 def test_prepare_turn_marks_retrieval_unavailable_when_rag_requested_without_pipeline() -> None:
-    service = ChatService(FakeClient(), session=ChatSession(), rag_pipeline=None)
+    service = ChatService(FakeClient(), state=InMemoryDialogState(), prompting=build_prompting(), retriever=None)
 
     prepared = service.prepare_turn(ChatTurnRequest(user_message="Где логи?", use_rag=True))
 
@@ -169,7 +204,12 @@ def test_prepare_turn_marks_retrieval_unavailable_when_rag_requested_without_pip
 
 
 def test_prepare_turn_marks_rag_misconfiguration() -> None:
-    service = ChatService(FakeClient(), session=ChatSession(), rag_pipeline=MisconfiguredRAG())
+    service = ChatService(
+        FakeClient(),
+        state=InMemoryDialogState(),
+        prompting=build_prompting(),
+        retriever=MisconfiguredRAG(),
+    )
 
     prepared = service.prepare_turn(ChatTurnRequest(user_message="Проверь индексы", use_rag=True))
 
@@ -180,7 +220,7 @@ def test_prepare_turn_marks_rag_misconfiguration() -> None:
 
 
 def test_prepare_turn_marks_rag_runtime_failure() -> None:
-    service = ChatService(FakeClient(), session=ChatSession(), rag_pipeline=BrokenRAG())
+    service = ChatService(FakeClient(), state=InMemoryDialogState(), prompting=build_prompting(), retriever=BrokenRAG())
 
     prepared = service.prepare_turn(ChatTurnRequest(user_message="Проверь runtime", use_rag=True))
 
@@ -188,3 +228,43 @@ def test_prepare_turn_marks_rag_runtime_failure() -> None:
     assert prepared.retrieved_context.failed is True
     assert prepared.retrieved_context.error_kind == "runtime_failure"
     assert prepared.retrieved_context.error == "RuntimeError: faiss search crashed"
+
+
+def test_chat_service_persists_turn_and_manual_facts() -> None:
+    state = build_dialog_state()
+    service = ChatService(
+        FakeClient(),
+        state=state,
+        prompting=build_prompting(),
+    )
+
+    saved_fact = service.remember_fact(" Name ", " Андрей ")
+    response = service.run_turn(ChatTurnRequest(user_message="Привет", metadata={"chat_id": 42}))
+
+    assert response.assistant_message == "Ответ"
+    assert saved_fact.key == "name"
+    assert saved_fact.value == "Андрей"
+    assert state.stats()["messages_persisted"] == 2
+    assert [(fact.key, fact.value) for fact in state.list_facts()] == [("name", "Андрей")]
+    assert "name: Андрей" in response.llm_messages[-1]["content"]
+
+
+def test_chat_service_clear_history_clears_persistent_memory() -> None:
+    state = build_dialog_state()
+    service = ChatService(
+        FakeClient(),
+        state=state,
+        prompting=build_prompting(),
+    )
+
+    service.remember_fact("name", "Андрей")
+    service.run_turn(ChatTurnRequest(user_message="Привет"))
+    service.clear_history()
+
+    assert service.history == []
+    assert state.stats() == {
+        "messages_persisted": 0,
+        "cached_messages": 0,
+        "facts": 0,
+        "history_window": 12,
+    }

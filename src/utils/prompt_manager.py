@@ -1,49 +1,38 @@
-"""
-PromptManager — централизованный доступ к шаблонам промптов.
+"""PromptManager — централизованный доступ к шаблонам промптов."""
 
-Отвечает только за:
-- загрузку шаблонов из configs/prompts.yaml
-- проверку наличия шаблонов
-- форматирование шаблонов с подстановкой переменных
-"""
+from __future__ import annotations
 
 import logging
+from pathlib import Path
 import re
 from typing import Any
 
 import yaml
 
-from .config import Config
-
 logger = logging.getLogger(__name__)
 
 
 class PromptManager:
-    """
-    Менеджер промптов проекта
+    """Универсальный слой доступа к шаблонам промптов без глобального состояния."""
 
-    Универсальный слой доступа к шаблонам промптов.
-    Не содержит доменной логики (chat/chunks/RAG).
-    """
-
-    _instance: "PromptManager | None" = None
-    _prompts: dict[str, Any] | None = None
-
-    def __new__(cls) -> "PromptManager":
-        """Singleton для предотвращения повторной загрузки"""
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-
-    def __init__(self):
-        """Инициализация (вызывается один раз благодаря singleton)"""
+    def __init__(
+        self,
+        *,
+        prompts_path: str | Path | None = None,
+        prompts: dict[str, Any] | None = None,
+    ):
+        self._prompts_path = Path(prompts_path) if prompts_path is not None else self._default_prompts_path()
+        self._prompts: dict[str, Any] | None = dict(prompts) if prompts is not None else None
         if self._prompts is None:
             self._load_prompts()
 
+    @staticmethod
+    def _default_prompts_path() -> Path:
+        return Path(__file__).resolve().parent.parent.parent / "configs" / "prompts.yaml"
+
     def _load_prompts(self) -> None:
         """Загрузить промпты из YAML файла"""
-        config = Config.load()
-        prompts_path = config.project_root / "configs" / "prompts.yaml"
+        prompts_path = self._prompts_path
 
         if not prompts_path.exists():
             logger.error(f"Файл промптов не найден: {prompts_path}")
@@ -132,9 +121,3 @@ class PromptManager:
         """Перезагрузить промпты из файла"""
         self._prompts = None
         self._load_prompts()
-
-    @classmethod
-    def reset(cls) -> None:
-        """Сбросить singleton (для тестов)"""
-        cls._instance = None
-        cls._prompts = None

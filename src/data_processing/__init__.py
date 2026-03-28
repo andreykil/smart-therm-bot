@@ -1,31 +1,28 @@
 """
-Data Processing — обработка данных чата для RAG
-
-Модуль для преобразования Telegram чата в RAG чанки.
+Data Processing — обработка данных чата для RAG.
 
 Использование:
+    from src.config import Config
     from src.data_processing import run_filtering, run_chunks
-    from src.utils.config import Config
 
     config = Config.load()
     run_filtering(config)
     run_chunks(config, llm)
 """
 
+from .chat_chunks import run_chunks
+from .chat_filtering import run_filtering
 from .models import (
-    TelegramMessage,
-    TelegramChat,
+    ChunkContent,
+    ChunkMetadata,
     FilteredMessage,
     Group,
     RAGChunk,
-    ChunkContent,
-    ChunkMetadata
+    TelegramChat,
+    TelegramMessage,
 )
-from .chat_filtering import run_filtering
-from .chat_chunks import run_chunks
 
 __all__ = [
-    # Модели данных
     "TelegramMessage",
     "TelegramChat",
     "FilteredMessage",
@@ -33,8 +30,6 @@ __all__ = [
     "RAGChunk",
     "ChunkContent",
     "ChunkMetadata",
-
-    # Функции
     "run_filtering",
     "run_chunks",
 ]

@@ -4,19 +4,14 @@ from src.utils.prompt_manager import PromptManager
 
 
 @pytest.fixture()
-def prompt_manager(monkeypatch: pytest.MonkeyPatch) -> PromptManager:
-    prompts = {
-        "simple": "Привет",
-        "templated": "Вопрос: {question}",
-        "double": "{{json}} {person}",
-    }
-
-    def fake_load_prompts(self: PromptManager) -> None:
-        self._prompts = prompts
-
-    monkeypatch.setattr(PromptManager, "_load_prompts", fake_load_prompts)
-    PromptManager.reset()
-    return PromptManager()
+def prompt_manager() -> PromptManager:
+    return PromptManager(
+        prompts={
+            "simple": "Привет",
+            "templated": "Вопрос: {question}",
+            "double": "{{json}} {person}",
+        }
+    )
 
 
 def test_get_prompt_returns_plain_template(prompt_manager: PromptManager) -> None:

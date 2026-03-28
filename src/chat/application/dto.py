@@ -1,50 +1,14 @@
-"""Структуры данных для chat orchestration."""
+"""DTO и структуры orchestration-слоя чата."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from typing import Any, Literal
 
-from src.rag.models import SearchResult
+from src.chat.domain.models import RetrievalResult
 
-ChatRole = Literal["user", "assistant"]
 StreamEventKind = Literal["debug", "token", "final"]
 RetrievalErrorKind = Literal["retrieval_unavailable", "misconfiguration", "runtime_failure"]
-
-
-def utc_now_iso() -> str:
-    """Получить текущее время в UTC в ISO-формате."""
-    return datetime.now(timezone.utc).isoformat()
-
-
-@dataclass(slots=True)
-class ChatMessage:
-    """Каноническое сообщение истории чата."""
-
-    role: ChatRole
-    content: str
-    created_at: str = field(default_factory=utc_now_iso)
-    rag_enabled: bool = False
-    rag_query: str | None = None
-    rag_total_found: int = 0
-    metadata: dict[str, Any] = field(default_factory=dict)
-
-    def to_llm_message(self) -> dict[str, str]:
-        """Сконвертировать запись истории в payload для LLM."""
-        return {"role": self.role, "content": self.content}
-
-    def to_dict(self) -> dict[str, Any]:
-        """Сериализовать сообщение для JSON/export."""
-        return {
-            "role": self.role,
-            "content": self.content,
-            "created_at": self.created_at,
-            "rag_enabled": self.rag_enabled,
-            "rag_query": self.rag_query,
-            "rag_total_found": self.rag_total_found,
-            "metadata": self.metadata,
-        }
 
 
 @dataclass(slots=True)
@@ -53,7 +17,7 @@ class RetrievedContext:
 
     enabled: bool
     query: str | None = None
-    result: SearchResult | None = None
+    result: RetrievalResult | None = None
     context_text: str = ""
     error: str | None = None
     error_kind: RetrievalErrorKind | None = None
@@ -80,6 +44,7 @@ class ChatTurnRequest:
     temperature: float = 0.7
     use_rag: bool = False
     system_prompt_override: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)

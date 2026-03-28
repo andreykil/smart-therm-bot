@@ -14,7 +14,7 @@ import re
 from pathlib import Path
 
 from .models import FilteredMessage, TelegramChat, TelegramMessage
-from ..utils.config import Config
+from src.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -225,7 +225,7 @@ def run_filtering(
     stats = filter_messages(
         input_path,
         output_path,
-        stop_words=chat_cfg.get("stop_words")
+        stop_words=chat_cfg.stop_words,
     )
 
     logger.info("Статистика:")

@@ -1,34 +1,23 @@
-"""Chat domain package."""
+"""Публичный API chat-подсистемы без eager-import composition root."""
 
-from .bootstrap import ChatApp, build_chat_app, create_client, create_rag_pipeline
-from .commands import CommandContext, CommandDispatcher, CommandParser, CommandResult, ParsedCommand
-from .contracts import ChatModelClient, ChatRAGPipeline
-from .models import ChatMessage, ChatStreamEvent, ChatTurnRequest, ChatTurnResponse, PreparedChatTurn, RetrievedContext
-from .prompting import ChatPrompting
-from .runtime import ChatRuntime
-from .service import ChatService
-from .session import ChatSession
+from __future__ import annotations
 
-__all__ = [
-    "build_chat_app",
-    "create_client",
-    "create_rag_pipeline",
-    "ChatApp",
-    "ChatModelClient",
-    "ChatRAGPipeline",
-    "ChatMessage",
-    "ChatPrompting",
-    "ChatRuntime",
-    "PreparedChatTurn",
-    "ChatService",
-    "ChatSession",
-    "ChatStreamEvent",
-    "ChatTurnRequest",
-    "ChatTurnResponse",
-    "CommandContext",
-    "CommandDispatcher",
-    "CommandParser",
-    "CommandResult",
-    "ParsedCommand",
-    "RetrievedContext",
-]
+from typing import Any
+
+from .application.session_facade import SessionFacade
+from .registry import DialogRegistry
+
+
+def build_chat_session(*args: Any, **kwargs: Any) -> SessionFacade:
+    from .composition import build_chat_session as _build_chat_session
+
+    return _build_chat_session(*args, **kwargs)
+
+
+def build_dialog_registry(*args: Any, **kwargs: Any) -> DialogRegistry:
+    from .composition import build_dialog_registry as _build_dialog_registry
+
+    return _build_dialog_registry(*args, **kwargs)
+
+
+__all__ = ["build_chat_session", "build_dialog_registry", "SessionFacade", "DialogRegistry"]

@@ -88,3 +88,8 @@ chat_question_block: |
 chat_context_block: |
   КОНТЕКСТ ИЗ БАЗЫ ЗНАНИЙ:
   {rag_context}
+
+# Блок persistent memory facts (добавляется только при наличии сохранённых фактов)
+chat_memory_block: |
+  ПАМЯТЬ О ДИАЛОГЕ:
+  {memory_context}
