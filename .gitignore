@@ -1,17 +1,8 @@
 # Данные
-data/raw/*
-data/processed/*
-data/indices/*
-data/models/*
-data/runtime/*
+data/*
 
 !data/raw/.gitkeep
-!data/processed/.gitkeep
-!data/indices/.gitkeep
-!data/runtime/.gitkeep
-
-!data/processed/chat/
-!data/raw/chat_history.json
+!data/processed/chat/chunks_rag.jsonl
 
 logs/
 
@@ -158,6 +149,9 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+!.env.local.example
+!.env.server.example
+!.env.example
 
 # Spyder project settings
 .spyderproject

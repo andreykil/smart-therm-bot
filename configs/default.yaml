@@ -16,11 +16,11 @@ rag:
 llm:
   provider: "ollama"
   model: "qwen3.5:9b"  # Название модели в Ollama ("llama3.1:8b", "qwen3.5:9b")
-  base_url: "http://localhost:11434"  # URL Ollama сервера
+  base_url: "http://localhost:11434"  # Для Docker override см. configs/docker.yaml
   think: false  # null - не передавать параметр think; true/false - передавать явно
 
   temperature: 0.1 # Для детерминированных ответов (RAG, чанки)
-  max_tokens: 1024
+  max_tokens: 2048
   context_size: 8192 # Не передается
  
 # Параметры обработки чата
@@ -48,7 +48,7 @@ truncate:
 
 # Bot настройки
 bot:
-  token: ""  # TELEGRAM_BOT_TOKEN из .env
+  token: ""  # Секрет хранится только в env: TELEGRAM_BOT_TOKEN
   admin_ids: []
   use_rag: true
 

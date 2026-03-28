@@ -1,6 +1,7 @@
 PYTHON := .venv/bin/python3
+DOCKER_ENV_FILE ?= .env
 
-.PHONY: help install install-dev chat telegram-bot process-chat chat-filter chat-chunks chunks-debug reindex truncate truncate-n test-chunks test clean clean-models clean-all
+.PHONY: help install install-dev chat telegram-bot process-chat chat-filter chat-chunks chunks-debug reindex truncate truncate-n test-chunks test docker-build docker-up docker-down docker-remove docker-logs docker-reindex clean clean-models clean-all
 
 help: ## Показать справку
 	@echo "SmartTherm-помощник — Makefile команды"
@@ -24,6 +25,24 @@ chat: ## Запустить интерактивный чат (модель из
 
 telegram-bot: ## Запустить Telegram-бота через long polling
 	$(PYTHON) -m scripts.run_telegram_bot
+
+docker-build: ## Собрать Docker-образ бота
+	docker compose --env-file $(DOCKER_ENV_FILE) build bot
+
+docker-up: ## Поднять bot + ollama через Docker Compose
+	docker compose --env-file $(DOCKER_ENV_FILE) up -d
+
+docker-down: ## Остановить Docker Compose стек
+	docker compose --env-file $(DOCKER_ENV_FILE) down
+
+docker-remove: ## Удалить контейнеры, сеть и volumes Docker Compose
+	docker compose --env-file $(DOCKER_ENV_FILE) down --volumes --remove-orphans
+
+docker-logs: ## Показать логи docker compose
+	docker compose --env-file $(DOCKER_ENV_FILE) logs -f bot
+
+docker-reindex: ## Переиндексация RAG внутри Docker-контейнера бота
+	docker compose --env-file $(DOCKER_ENV_FILE) run --rm bot python -m scripts.reindex_rag
 
 process-chat: ## Запустить обработку чата (фильтрация + чанки)
 	@echo "🔄 Фильтрация..."

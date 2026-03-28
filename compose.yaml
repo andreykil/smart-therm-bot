@@ -1,0 +1,17 @@
+services:
+  bot:
+    build:
+      context: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      SMART_THERM_CONFIG: ${SMART_THERM_CONFIG:-configs/docker.yaml}
+    volumes:
+      - bot_runtime:/app/data/runtime
+      - bot_indices:/app/data/indices
+    command: ["python", "-m", "scripts.run_telegram_bot"]
+
+volumes:
+  bot_runtime:
+  bot_indices:

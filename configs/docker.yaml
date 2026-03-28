@@ -1,0 +1,6 @@
+# Docker override для сценария: бот в контейнере, Ollama запущена локально на хосте.
+# Загружается поверх [`configs/default.yaml`](configs/default.yaml)
+# через env `SMART_THERM_CONFIG=configs/docker.yaml`.
+
+llm:
+  base_url: "http://host.docker.internal:11434"
