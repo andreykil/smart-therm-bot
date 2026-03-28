@@ -20,7 +20,7 @@ llm:
   think: false  # null - не передавать параметр think; true/false - передавать явно
 
   temperature: 0.1 # Для детерминированных ответов (RAG, чанки)
-  max_tokens: 2048
+  max_tokens: 1024
   context_size: 8192 # Не передается
  
 # Параметры обработки чата
@@ -50,6 +50,7 @@ truncate:
 bot:
   token: ""  # TELEGRAM_BOT_TOKEN из .env
   admin_ids: []
+  use_rag: true
 
 # Persistent memory
 memory:

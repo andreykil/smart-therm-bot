@@ -6,6 +6,8 @@ from dataclasses import dataclass
 
 from src.chat.registry import DialogRegistry
 
+from .telegram_markdown import render_telegram_html_from_markdown
+
 
 @dataclass(slots=True, frozen=True)
 class TelegramTransportRequest:
@@ -18,11 +20,8 @@ class TelegramTransportRequest:
 
     @property
     def dialog_key(self) -> str:
-        """Построить ключ изолированного диалога для registry."""
-        key = f"chat:{self.chat_id}"
-        if self.thread_id is not None:
-            key += f":thread:{self.thread_id}"
-        return key
+        """Построить ключ изолированного диалога для registry по chat_id."""
+        return f"chat:{self.chat_id}"
 
 
 @dataclass(slots=True)
@@ -32,6 +31,7 @@ class TelegramTransportResponse:
     text: str
     is_command: bool = False
     dialog_key: str = ""
+    parse_mode: str | None = None
 
 
 class TelegramTransport:
@@ -53,6 +53,7 @@ class TelegramTransport:
                         text="\n".join(command_result.lines),
                         is_command=True,
                         dialog_key=request.dialog_key,
+                        parse_mode=command_result.parse_mode,
                     )
 
                 response = session.run_text(
@@ -65,8 +66,9 @@ class TelegramTransport:
                     },
                 )
                 return TelegramTransportResponse(
-                    text=response.assistant_message,
+                    text=render_telegram_html_from_markdown(response.assistant_message),
                     dialog_key=request.dialog_key,
+                    parse_mode="HTML",
                 )
         finally:
             self.registry.release(lease)

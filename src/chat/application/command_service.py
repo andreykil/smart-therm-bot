@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import html
 from typing import cast
 
 from .chat_service import ChatService
@@ -18,6 +19,7 @@ class ParsedCommand:
 @dataclass(slots=True)
 class CommandResult:
     lines: list[str]
+    parse_mode: str | None = None
 
 
 @dataclass(slots=True)
@@ -43,20 +45,32 @@ class CommandParser:
 class CommandService:
     """Dispatcher общих slash-команд поверх chat application context."""
 
+    @staticmethod
+    def command_items() -> list[tuple[str, str]]:
+        return [
+            ("/clear", "очистить историю"),
+            ("/memory", "показать сохранённые факты"),
+            ("/remember k=v", "сохранить факт"),
+            ("/forget key", "удалить факт"),
+            ("/stats", "показать статистику"),
+            ("/rag", "переключить RAG вкл/выкл"),
+            ("/help", "показать команды"),
+        ]
+
     def __init__(self, context: CommandContext):
         self.context = context
 
     def command_lines(self) -> list[str]:
-        return [
-            "Команды:",
-            "  /clear            — очистить историю",
-            "  /memory           — показать сохранённые факты",
-            "  /remember k=v     — сохранить факт",
-            "  /forget key       — удалить факт",
-            "  /stats            — показать статистику",
-            "  /rag              — переключить RAG вкл/выкл",
-            "  /help             — показать команды",
-        ]
+        return ["Команды:", *(f"  {name:<16} — {description}" for name, description in self.command_items())]
+
+    def help_html(self) -> str:
+        lines = ["<b>Команды:</b>", "<pre>"]
+        lines.extend(
+            f"{html.escape(name):<16} — {html.escape(description)}"
+            for name, description in self.command_items()
+        )
+        lines.append("</pre>")
+        return "\n".join(lines)
 
     @staticmethod
     def _parse_memory_argument(argument: str) -> tuple[str, str] | None:
@@ -149,6 +163,6 @@ class CommandService:
             return CommandResult(lines=[f"🔄 RAG {'включен' if enabled else 'выключен'}"])
 
         if parsed.name == "/help":
-            return CommandResult(lines=self.command_lines())
+            return CommandResult(lines=[self.help_html()], parse_mode="HTML")
 
         return CommandResult(lines=[f"❓ Неизвестная команда: {parsed.name}", *self.command_lines()])

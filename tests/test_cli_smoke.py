@@ -286,19 +286,37 @@ def test_run_interactive_chat_handles_exit_locally(monkeypatch, capsys) -> None:
     assert "/exit             — выйти" in captured.out
 
 
-def test_telegram_transport_routes_commands_and_regular_messages() -> None:
+def test_telegram_transport_routes_commands_and_regular_messages(monkeypatch) -> None:
+    def markdown_chat(
+        self,
+        messages: list[dict],
+        max_tokens: int = 1024,
+        temperature: float = 0.7,
+        top_p: float = 0.9,
+        stop: list | None = None,
+        think: bool | None = None,
+    ) -> str:
+        del self, messages, max_tokens, temperature, top_p, stop, think
+        return "# Ответ\n\n- пункт\n- второй"
+
+    monkeypatch.setattr(FakeClient, "chat", markdown_chat)
+
     registry = build_registry()
     transport = TelegramTransport(registry)
 
     command_response = transport.handle_request(TelegramTransportRequest(chat_id=101, user_id=10, text="/help"))
     assert command_response.is_command is True
-    assert "Команды:" in command_response.text
+    assert "<b>Команды:</b>" in command_response.text
+    assert command_response.parse_mode == "HTML"
     assert "/exit" not in command_response.text
     assert command_response.dialog_key == "chat:101"
 
     message_response = transport.handle_text("Привет", chat_id=101, user_id=10)
     assert message_response.is_command is False
-    assert message_response.text == "single-response"
+    assert message_response.parse_mode == "HTML"
+    assert "<b>Ответ</b>" in message_response.text
+    assert "• пункт" in message_response.text
+    assert "• второй" in message_response.text
     assert message_response.dialog_key == "chat:101"
 
 
@@ -344,10 +362,10 @@ def test_telegram_transport_scopes_commands_per_dialog() -> None:
     registry.release(second_context)
 
 
-def test_telegram_transport_uses_thread_id_in_dialog_key() -> None:
+def test_telegram_transport_ignores_thread_id_in_dialog_key() -> None:
     request = TelegramTransportRequest(chat_id=-100123, user_id=10, thread_id=777, text="Привет")
 
-    assert request.dialog_key == "chat:-100123:thread:777"
+    assert request.dialog_key == "chat:-100123"
 
 
 def test_telegram_transport_persists_manual_memory_commands() -> None:

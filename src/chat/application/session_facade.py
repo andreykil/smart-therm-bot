@@ -46,6 +46,9 @@ class SessionFacade:
     def command_lines(self) -> list[str]:
         return self.commands.command_lines()
 
+    def command_help_html(self) -> str:
+        return self.commands.help_html()
+
     def try_execute_command(self, raw: str) -> CommandResult | None:
         if not CommandParser.is_command(raw):
             return None

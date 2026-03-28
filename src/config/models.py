@@ -53,6 +53,14 @@ class TruncateConfig(BaseModel):
 class BotConfig(BaseModel):
     token: str = Field(default_factory=lambda: os.getenv("TELEGRAM_BOT_TOKEN", ""))
     admin_ids: list[int] = Field(default_factory=list)
+    use_rag: bool = True
+
+    @field_validator("token", mode="before")
+    @classmethod
+    def use_env_token_when_config_is_empty(cls, value: object) -> object:
+        if isinstance(value, str) and value.strip():
+            return value
+        return os.getenv("TELEGRAM_BOT_TOKEN", "")
 
 
 class MemoryConfig(BaseModel):

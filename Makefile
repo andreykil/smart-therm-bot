@@ -1,6 +1,6 @@
 PYTHON := .venv/bin/python3
 
-.PHONY: help install install-dev chat process-chat chat-filter chat-chunks chunks-debug reindex truncate truncate-n test-chunks test clean clean-models clean-all
+.PHONY: help install install-dev chat telegram-bot process-chat chat-filter chat-chunks chunks-debug reindex truncate truncate-n test-chunks test clean clean-models clean-all
 
 help: ## Показать справку
 	@echo "SmartTherm-помощник — Makefile команды"
@@ -21,6 +21,9 @@ install-dev: ## Установить зависимости для разраб�
 
 chat: ## Запустить интерактивный чат (модель из конфига)
 	$(PYTHON) -m scripts.cli_chat
+
+telegram-bot: ## Запустить Telegram-бота через long polling
+	$(PYTHON) -m scripts.run_telegram_bot
 
 process-chat: ## Запустить обработку чата (фильтрация + чанки)
 	@echo "🔄 Фильтрация..."

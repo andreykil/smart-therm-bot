@@ -4,7 +4,7 @@ Telegram-бот для поддержки пользователей SmartTherm 
 
 ## Что сейчас делает проект
 
-- Отвечает на технические вопросы по SmartTherm в CLI-чате и через Telegram transport helper.
+- Отвечает на технические вопросы по SmartTherm в CLI-чате и через Telegram long polling бота.
 - Использует локальную модель через Ollama.
 - Подключает RAG как внешний retrieval adapter к chat-core.
 - Хранит историю ходов и ручные facts по `dialog_key` в SQLite.
@@ -54,10 +54,21 @@ make chat
 python -m scripts.cli_chat --rag
 ```
 
+Запуск Telegram-бота:
+
+```bash
+python -m scripts.run_telegram_bot
+# или
+make telegram-bot
+```
+
+По умолчанию бот стартует с RAG, если индексы доступны. В личке он отвечает на любой текст; в группах — только на slash-команды, `@mention` и reply на сообщение бота.
+
 ## Полезные команды
 
 - `make process-chat` — фильтрация и создание чанков одним шагом.
 - `make reindex` — переиндексация RAG.
+- `make telegram-bot` — запуск Telegram-бота через long polling.
 - `make truncate` / `make truncate-n N=100` — подготовка укороченного датасета для тестов.
 - `make test` — запуск тестов.
 - `source .venv/bin/activate && pyright` — обязательная проверка типов.
@@ -75,7 +86,7 @@ transport / scripts -> composition -> application -> domain
 - [`src/memory/sqlite_dialog_state.py`](src/memory/sqlite_dialog_state.py) и [`src/memory/sqlite_repository.py`](src/memory/sqlite_repository.py) — внешний persistent adapter к порту состояния диалога.
 - [`src/rag/retrieval_service.py`](src/rag/retrieval_service.py) — внешний retrieval adapter: преобразует внутренний RAG-результат в chat-owned [`RetrievalResult`](src/chat/domain/models.py).
 - [`src/chat/prompting.py`](src/chat/prompting.py) — prompt adapter без self-composition: [`ChatPrompting`](src/chat/prompting.py) получает [`PromptManager`](src/utils/prompt_manager.py) извне.
-- [`scripts/cli_chat.py`](scripts/cli_chat.py) и [`src/bot/telegram_transport.py`](src/bot/telegram_transport.py) — тонкие transport entrypoints поверх одного composition flow.
+- [`scripts/cli_chat.py`](scripts/cli_chat.py), [`scripts/run_telegram_bot.py`](scripts/run_telegram_bot.py), [`src/bot/telegram_transport.py`](src/bot/telegram_transport.py) и [`src/bot/telegram_runner.py`](src/bot/telegram_runner.py) — transport entrypoints и Telegram runner поверх одного composition flow.
 
 ## Конфигурация
 
