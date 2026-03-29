@@ -51,6 +51,13 @@ bot:
   token: ""  # Секрет хранится только в env: TELEGRAM_BOT_TOKEN
   admin_ids: []
   use_rag: true
+  streaming:
+    enabled: true
+    private_native_drafts: true
+    flush_interval_ms: 1200
+    min_chars_delta: 240
+    max_draft_chars: 4000
+    max_draft_seconds: 30
 
 # Persistent memory
 memory:

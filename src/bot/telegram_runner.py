@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import argparse
 import logging
 import re
@@ -15,12 +16,15 @@ from src.chat.application.command_service import CommandParser
 from src.chat.composition import build_dialog_registry
 from src.config import Config
 
+from .telegram_draft_sender import TelegramDraftSender, TelegramNativeStreamingSettings
 from .telegram_transport import TelegramTransport, TelegramTransportRequest, TelegramTransportResponse
 
 LOGGER = logging.getLogger(__name__)
 
 TRANSPORT_KEY = "telegram_transport"
 BOT_USERNAME_KEY = "telegram_bot_username"
+STREAMING_SETTINGS_KEY = "telegram_streaming_settings"
+DRAFT_SENDER_FACTORY_KEY = "telegram_draft_sender_factory"
 GROUP_CHAT_TYPES = {"group", "supergroup"}
 
 
@@ -155,6 +159,19 @@ def route_transport_message(
     bot_username: str | None,
 ) -> TelegramTransportResponse | None:
     """Применить Telegram routing policy и при необходимости вызвать transport."""
+    request = build_transport_request(message, bot_username=bot_username)
+    if request is None:
+        return None
+
+    return transport.handle_request(request)
+
+
+def build_transport_request(
+    message: IncomingTelegramText,
+    *,
+    bot_username: str | None,
+) -> TelegramTransportRequest | None:
+    """Собрать нормализованный transport request, если сообщение адресовано боту."""
     if not should_process_message(message, bot_username=bot_username):
         return None
 
@@ -162,13 +179,11 @@ def route_transport_message(
     if not normalized_text:
         return None
 
-    return transport.handle_request(
-        TelegramTransportRequest(
-            chat_id=message.chat_id,
-            user_id=message.user_id,
-            thread_id=message.thread_id,
-            text=normalized_text,
-        )
+    return TelegramTransportRequest(
+        chat_id=message.chat_id,
+        user_id=message.user_id,
+        thread_id=message.thread_id,
+        text=normalized_text,
     )
 
 
@@ -229,6 +244,15 @@ def build_application(
 
     application = Application.builder().token(config.bot.token).post_init(_post_init).build()
     application.bot_data[TRANSPORT_KEY] = transport
+    application.bot_data[STREAMING_SETTINGS_KEY] = TelegramNativeStreamingSettings(
+        enabled=config.bot.streaming.enabled,
+        private_native_drafts=config.bot.streaming.private_native_drafts,
+        flush_interval_ms=config.bot.streaming.flush_interval_ms,
+        min_chars_delta=config.bot.streaming.min_chars_delta,
+        max_draft_chars=config.bot.streaming.max_draft_chars,
+        max_draft_seconds=config.bot.streaming.max_draft_seconds,
+    )
+    application.bot_data[DRAFT_SENDER_FACTORY_KEY] = TelegramDraftSender
     application.add_handler(CommandHandler("start", handle_start))
     application.add_handler(MessageHandler(filters.COMMAND, handle_command_message))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
@@ -247,6 +271,44 @@ def _is_reply_to_current_bot(message: Message | None, *, bot_id: int | None) -> 
     if reply is None or reply.from_user is None:
         return False
     return reply.from_user.id == bot_id
+
+
+def _build_request_metadata(request: TelegramTransportRequest) -> dict[str, int | str | None]:
+    return {
+        "chat_id": request.chat_id,
+        "user_id": request.user_id,
+        "thread_id": request.thread_id,
+        "dialog_key": request.dialog_key,
+    }
+
+
+async def _handle_private_stream_request(
+    transport: TelegramTransport,
+    context: ContextTypes.DEFAULT_TYPE,
+    *,
+    message: Message,
+    request: TelegramTransportRequest,
+) -> None:
+    lease = transport.registry.acquire(request.dialog_key)
+    try:
+        with lease.lock:
+            session = lease.session
+            sender_factory = context.application.bot_data[DRAFT_SENDER_FACTORY_KEY]
+            streaming_settings = context.application.bot_data[STREAMING_SETTINGS_KEY]
+            sender = sender_factory(
+                bot=context.application.bot,
+                bot_token=context.application.bot.token,
+                settings=streaming_settings,
+            )
+            await sender.send_stream(
+                source_message=message,
+                events=session.stream_text(
+                    request.text,
+                    metadata=_build_request_metadata(request),
+                ),
+            )
+    finally:
+        transport.registry.release(lease)
 
 
 def _build_incoming_message(message: Message, *, bot_id: int | None) -> IncomingTelegramText:
@@ -304,11 +366,22 @@ async def _handle_transport_message(update: Update, context: ContextTypes.DEFAUL
     bot_username = context.application.bot_data.get(BOT_USERNAME_KEY)
     bot_id = context.application.bot.id if context.application.bot is not None else None
     incoming = _build_incoming_message(message, bot_id=bot_id)
+    request = build_transport_request(incoming, bot_username=bot_username)
 
     try:
-        response = route_transport_message(transport, incoming, bot_username=bot_username)
-        if response is None:
+        if request is None:
             return
+
+        streaming_settings: TelegramNativeStreamingSettings = context.application.bot_data[STREAMING_SETTINGS_KEY]
+        if (
+            streaming_settings.enabled
+            and incoming.chat_type == "private"
+            and not CommandParser.is_command(request.text)
+        ):
+            await _handle_private_stream_request(transport, context, message=message, request=request)
+            return
+
+        response = transport.handle_request(request)
         await message.reply_text(response.text, parse_mode=response.parse_mode)
     except Exception:
         LOGGER.exception("Telegram message handling failed")

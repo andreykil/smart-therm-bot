@@ -54,6 +54,7 @@ class BotConfig(BaseModel):
     token: str = Field(default_factory=lambda: os.getenv("TELEGRAM_BOT_TOKEN", ""))
     admin_ids: list[int] = Field(default_factory=list)
     use_rag: bool = True
+    streaming: "BotStreamingConfig" = Field(default_factory=lambda: BotStreamingConfig())
 
     @field_validator("token", mode="before")
     @classmethod
@@ -68,6 +69,15 @@ class MemoryConfig(BaseModel):
     session_cache_limit: int = 12
     registry_max_contexts: int = 1000
     registry_idle_ttl_seconds: int = 3600
+
+
+class BotStreamingConfig(BaseModel):
+    enabled: bool = False
+    private_native_drafts: bool = True
+    flush_interval_ms: int = 400
+    min_chars_delta: int = 120
+    max_draft_chars: int = 4000
+    max_draft_seconds: int = 30
 
 
 class ServerConfig(BaseModel):
