@@ -11,6 +11,14 @@ from .models import (
     ServerConfig,
     TruncateConfig,
 )
+from .qlora_models import (
+    QLoRABackendConfig,
+    QLoRAExportConfig,
+    QLoRAMicroTestConfig,
+    QLoRAQuantizationConfig,
+    QLoRATrainingConfig,
+    QLoRAWorkspaceConfig,
+)
 
 __all__ = [
     "BotConfig",
@@ -20,6 +28,12 @@ __all__ = [
     "LoRAConfig",
     "MemoryConfig",
     "RAGConfig",
+    "QLoRABackendConfig",
+    "QLoRAExportConfig",
+    "QLoRAMicroTestConfig",
+    "QLoRAQuantizationConfig",
+    "QLoRATrainingConfig",
+    "QLoRAWorkspaceConfig",
     "ServerConfig",
     "TruncateConfig",
 ]

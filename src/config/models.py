@@ -94,6 +94,74 @@ class LoRAConfig(BaseModel):
     learning_rate: float = 1e-4
 
 
+class TrainBackendConfig(BaseModel):
+    device_preference: str = "auto"
+    trust_remote_code: bool = True
+    use_mps_bitsandbytes: bool = False
+
+
+class QLoRAConfig(BaseModel):
+    r: int = 8
+    alpha: int = 16
+    dropout: float = 0.05
+    target_modules: list[str] = Field(
+        default_factory=lambda: [
+            "q_proj",
+            "k_proj",
+            "v_proj",
+            "o_proj",
+            "gate_proj",
+            "up_proj",
+            "down_proj",
+        ]
+    )
+    load_in_4bit: bool = True
+    bnb_4bit_quant_type: str = "nf4"
+    bnb_4bit_compute_dtype: str = "float16"
+
+
+class TrainLoopConfig(BaseModel):
+    epochs: int = 3
+    batch_size: int = 1
+    gradient_accumulation_steps: int = 4
+    learning_rate: float = 1e-4
+    warmup_ratio: float = 0.03
+    logging_steps: int = 1
+    save_total_limit: int = 2
+
+
+class TrainExportConfig(BaseModel):
+    output_root: str = "qlora/artifacts"
+    adapter_dir_name: str = "adapter"
+    merged_dir_name: str = "merged"
+    gguf_dir_name: str = "gguf"
+    ollama_dir_name: str = "ollama"
+    merge_after_train: bool = True
+    gguf_enabled: bool = True
+    gguf_converter_script: str | None = None
+    gguf_outtype: str = "q8_0"
+    ollama_modelfile_enabled: bool = True
+    ollama_model_name: str = "smart-therm-qwen3.5-9b"
+
+
+class TrainMicroTestConfig(BaseModel):
+    sample_pairs: int = 3
+    epochs: int = 1
+
+
+class TrainConfig(BaseModel):
+    enabled: bool = False
+    base_model: str = "Qwen/Qwen3.5-9B"
+    dataset_path: str = "data/processed/chat/lora_pairs.jsonl"
+    max_seq_length: int = 2048
+    seed: int = 42
+    backend: TrainBackendConfig = Field(default_factory=TrainBackendConfig)
+    qlora: QLoRAConfig = Field(default_factory=QLoRAConfig)
+    training: TrainLoopConfig = Field(default_factory=TrainLoopConfig)
+    export: TrainExportConfig = Field(default_factory=TrainExportConfig)
+    micro_test: TrainMicroTestConfig = Field(default_factory=TrainMicroTestConfig)
+
+
 class Config(BaseModel):
     """Корневая конфигурация проекта."""
 
@@ -108,6 +176,7 @@ class Config(BaseModel):
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
     lora: LoRAConfig = Field(default_factory=LoRAConfig)
+    train: TrainConfig = Field(default_factory=TrainConfig)
 
     @field_validator("data_dir", "models_dir", mode="before")
     @classmethod

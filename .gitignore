@@ -1,5 +1,6 @@
 # Данные
 data/*
+qlora/artifacts/*
 
 !data/raw/.gitkeep
 !data/processed/chat/chunks_rag.jsonl

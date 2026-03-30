@@ -1,0 +1,59 @@
+# Отдельная конфигурация для QLoRA-обучения.
+
+data_dir: "data"
+models_dir: "data/models"
+mode: "full_train" # full_train/micro_test
+enabled: false
+base_model: "Qwen/Qwen2.5-3B"
+dataset_path: "data/processed/chat/lora_pairs.jsonl"
+tmp_dir: "qlora/tmp"
+max_seq_length: 2048
+seed: 42
+
+backend:
+  device_preference: "auto"
+  trust_remote_code: true
+  use_mps_bitsandbytes: true
+
+qlora:
+  r: 8
+  alpha: 16
+  dropout: 0.05
+  target_modules:
+    - "q_proj"
+    - "k_proj"
+    - "v_proj"
+    - "o_proj"
+    - "gate_proj"
+    - "up_proj"
+    - "down_proj"
+  load_in_4bit: true
+  bnb_4bit_quant_type: "nf4"
+  bnb_4bit_compute_dtype: "float16"
+
+training:
+  epochs: 3
+  batch_size: 1
+  gradient_accumulation_steps: 4
+  learning_rate: 0.0001
+  warmup_ratio: 0.03
+  logging_steps: 1
+  save_total_limit: 2
+
+export:
+  output_root: "qlora/artifacts"
+  adapter_dir_name: "adapter"
+  merged_dir_name: "merged"
+  gguf_dir_name: "gguf"
+  ollama_dir_name: "ollama"
+  merge_after_train: true
+  gguf_enabled: true
+  gguf_converter_script: null
+  gguf_outtype: "q8_0"
+  ollama_modelfile_enabled: true
+  ollama_model_name: "smart-therm-Qwen2.5-3B"
+  modelfile_temperature: 0.1
+
+micro_test:
+  sample_pairs: 3
+  epochs: 1
