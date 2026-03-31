@@ -5,8 +5,14 @@ from __future__ import annotations
 import argparse
 import json
 import random
+import sys
+from pathlib import Path
 
 import torch
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from qlora.src.dataset import load_examples
 from qlora.src.formatting import encode_example
