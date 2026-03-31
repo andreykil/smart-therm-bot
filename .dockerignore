@@ -15,14 +15,11 @@ plans/
 .kilocode/
 AGENTS.md
 
-data/raw/*
-data/runtime/*
-data/indices/*
-data/processed/*
+data/*
+qlora/*
 
 !data/runtime/.gitkeep
 !data/indices/.gitkeep
 !data/processed/.gitkeep
-!data/processed/chat/
 !data/processed/chat/.gitkeep
 !data/processed/chat/chunks_rag.jsonl
