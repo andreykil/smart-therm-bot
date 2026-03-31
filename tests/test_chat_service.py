@@ -249,7 +249,7 @@ def test_chat_service_persists_turn_and_manual_facts() -> None:
     assert "name: Андрей" in response.llm_messages[-1]["content"]
 
 
-def test_chat_service_clear_history_clears_persistent_memory() -> None:
+def test_chat_service_clear_history_preserves_manual_facts() -> None:
     state = build_dialog_state()
     service = ChatService(
         FakeClient(),
@@ -265,6 +265,7 @@ def test_chat_service_clear_history_clears_persistent_memory() -> None:
     assert state.stats() == {
         "messages_persisted": 0,
         "cached_messages": 0,
-        "facts": 0,
+        "facts": 1,
         "history_window": 12,
     }
+    assert [(fact.key, fact.value) for fact in state.list_facts()] == [("name", "Андрей")]

@@ -55,6 +55,9 @@ class InMemoryDialogState(DialogState):
         self._messages.clear()
         self._facts.clear()
 
+    def clear_history(self) -> None:
+        self._messages.clear()
+
     def list_facts(self) -> list[DialogMemoryFact]:
         return list(sorted(self._facts.values(), key=lambda fact: fact.key))
 

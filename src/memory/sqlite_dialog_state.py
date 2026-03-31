@@ -82,6 +82,10 @@ class SQLiteDialogState(DialogState):
         self.repository.clear_dialog(self.dialog_key)
         self._cached_messages = []
 
+    def clear_history(self) -> None:
+        self.repository.clear_dialog_history(self.dialog_key)
+        self._cached_messages = []
+
     def list_facts(self) -> list[DialogMemoryFact]:
         return self.repository.list_facts(self.dialog_key)
 

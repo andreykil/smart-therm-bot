@@ -54,6 +54,23 @@ def test_in_memory_dialog_state_clears_history_and_counts_turns() -> None:
     assert state.recent_messages() == []
 
 
+def test_in_memory_dialog_state_clear_history_preserves_facts() -> None:
+    state = InMemoryDialogState()
+    state.remember_fact("name", "Андрей")
+    state.append_turn(
+        user_message="Как подключить?",
+        assistant_message="Подключите по схеме.",
+        rag_enabled=False,
+        rag_query="Как подключить?",
+        rag_total_found=0,
+    )
+
+    state.clear_history()
+
+    assert state.recent_messages() == []
+    assert [(fact.key, fact.value) for fact in state.list_facts()] == [("name", "Андрей")]
+
+
 def test_in_memory_dialog_state_normalizes_fact_keys() -> None:
     state = InMemoryDialogState()
 
@@ -118,3 +135,25 @@ def test_sqlite_memory_repository_rolls_back_partial_turn_on_failure() -> None:
         )
 
     assert repository.count_messages("chat:42") == 0
+
+
+def test_sqlite_dialog_state_clear_history_preserves_facts() -> None:
+    db_dir = Path(tempfile.mkdtemp())
+    repository = SQLiteMemoryRepository(db_dir / "memory.sqlite3")
+    state = SQLiteDialogState(repository, dialog_key="chat:42", history_window=12)
+
+    state.remember_fact("name", "Андрей")
+    state.append_turn(
+        user_message="Привет",
+        assistant_message="Здравствуйте",
+        rag_enabled=False,
+        rag_query="Привет",
+        rag_total_found=0,
+    )
+
+    state.clear_history()
+
+    assert repository.count_messages("chat:42") == 0
+    assert repository.count_facts("chat:42") == 1
+    assert state.recent_messages() == []
+    assert [(fact.key, fact.value) for fact in state.list_facts()] == [("name", "Андрей")]

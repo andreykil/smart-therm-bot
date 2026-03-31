@@ -173,6 +173,10 @@ class SQLiteMemoryRepository:
             connection.execute("DELETE FROM dialog_messages WHERE dialog_key = ?", (dialog_key,))
             connection.execute("DELETE FROM dialog_facts WHERE dialog_key = ?", (dialog_key,))
 
+    def clear_dialog_history(self, dialog_key: str) -> None:
+        with self._connect() as connection:
+            connection.execute("DELETE FROM dialog_messages WHERE dialog_key = ?", (dialog_key,))
+
     def count_messages(self, dialog_key: str) -> int:
         with self._connect() as connection:
             row = connection.execute(

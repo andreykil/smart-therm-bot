@@ -39,7 +39,7 @@ class ChatService:
         return self.client.model
 
     def clear_history(self) -> None:
-        self.state.clear()
+        self.state.clear_history()
 
     def list_memory_facts(self) -> list[DialogMemoryFact]:
         return self.state.list_facts()

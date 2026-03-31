@@ -20,6 +20,7 @@ class ParsedCommand:
 class CommandResult:
     lines: list[str]
     parse_mode: str | None = None
+    reset_transcript: bool = False
 
 
 @dataclass(slots=True)
@@ -48,7 +49,7 @@ class CommandService:
     @staticmethod
     def command_items() -> list[tuple[str, str]]:
         return [
-            ("/clear", "очистить историю"),
+            ("/clear", "очистить историю чата"),
             ("/memory", "показать сохранённые факты"),
             ("/remember k=v", "сохранить факт"),
             ("/forget key", "удалить факт"),
@@ -131,7 +132,7 @@ class CommandService:
 
         if parsed.name == "/clear":
             self.context.service.clear_history()
-            return CommandResult(lines=["🗑️  История и память очищены"])
+            return CommandResult(lines=["🗑️  История чата очищена"], reset_transcript=True)
 
         if parsed.name == "/memory":
             return CommandResult(lines=self._memory_lines())
