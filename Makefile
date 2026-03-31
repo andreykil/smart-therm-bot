@@ -1,7 +1,7 @@
 PYTHON := .venv/bin/python3
 DOCKER_ENV_FILE ?= .env
 
-.PHONY: help install install-dev chat telegram-bot web-chat process-chat chat-filter chat-chunks chunks-debug reindex truncate truncate-n test-chunks test bot-build-docker bot-run-docker bot-stop-docker bot-remove-docker bot-logs-docker bot-reindex-docker web-build-docker web-run-docker web-stop-docker web-remove-docker web-logs-docker web-reindex-docker clean clean-models clean-all
+.PHONY: help install install-dev chat telegram-bot web-chat process-chat chat-filter chat-chunks chunks-debug reindex truncate truncate-n test-chunks test docker-bot-build docker-bot-up docker-bot-stop docker-bot-remove docker-bot-logs docker-bot-reindex docker-web-build docker-web-up docker-web-stop docker-web-remove docker-web-logs docker-web-reindex clean clean-models clean-all
 
 help: ## Показать справку
 	@echo "SmartTherm-помощник — Makefile команды"
@@ -29,40 +29,40 @@ telegram-bot: ## Запустить Telegram-бота через long polling
 web-chat: ## Запустить локальный веб-чат
 	$(PYTHON) -m scripts.run_web_chat
 
-bot-build-docker: ## Собрать Docker-образ Telegram-бота
+docker-bot-build: ## Собрать Docker-образ Telegram-бота
 	docker compose --env-file $(DOCKER_ENV_FILE) build bot
 
-bot-run-docker: ## Поднять Telegram-бота в Docker Compose
+docker-bot-up: ## Поднять Telegram-бота в Docker Compose
 	docker compose --env-file $(DOCKER_ENV_FILE) up -d bot
 
-bot-stop-docker: ## Остановить контейнер Telegram-бота
+docker-bot-stop: ## Остановить контейнер Telegram-бота
 	docker compose --env-file $(DOCKER_ENV_FILE) stop bot
 
-bot-remove-docker: ## Удалить контейнер и volumes Telegram-бота
+docker-bot-remove: ## Удалить контейнер и volumes Telegram-бота
 	docker compose --env-file $(DOCKER_ENV_FILE) rm -fsv bot
 
-bot-logs-docker: ## Показать логи Telegram-бота в Docker Compose
+docker-bot-logs: ## Показать логи Telegram-бота в Docker Compose
 	docker compose --env-file $(DOCKER_ENV_FILE) logs -f bot
 
-bot-reindex-docker: ## Переиндексация RAG внутри Docker-контейнера бота
+docker-bot-reindex: ## Переиндексация RAG внутри Docker-контейнера бота
 	docker compose --env-file $(DOCKER_ENV_FILE) run --rm bot python -m scripts.reindex_rag
 
-web-build-docker: ## Собрать Docker-образ веб-чата
+docker-web-build: ## Собрать Docker-образ веб-чата
 	docker compose --env-file $(DOCKER_ENV_FILE) build web
 
-web-run-docker: ## Поднять веб-чат в Docker Compose
+docker-web-up: ## Поднять веб-чат в Docker Compose
 	docker compose --env-file $(DOCKER_ENV_FILE) up -d web
 
-web-stop-docker: ## Остановить контейнер веб-чата
+docker-web-stop: ## Остановить контейнер веб-чата
 	docker compose --env-file $(DOCKER_ENV_FILE) stop web
 
-web-remove-docker: ## Удалить контейнер и volumes веб-чата
+docker-web-remove: ## Удалить контейнер и volumes веб-чата
 	docker compose --env-file $(DOCKER_ENV_FILE) rm -fsv web
 
-web-logs-docker: ## Показать логи веб-чата в Docker Compose
+docker-web-logs: ## Показать логи веб-чата в Docker Compose
 	docker compose --env-file $(DOCKER_ENV_FILE) logs -f web
 
-web-reindex-docker: ## Переиндексация RAG внутри Docker-контейнера веб-чата
+docker-web-reindex: ## Переиндексация RAG внутри Docker-контейнера веб-чата
 	docker compose --env-file $(DOCKER_ENV_FILE) run --rm web python -m scripts.reindex_rag
 
 process-chat: ## Запустить обработку чата (фильтрация + чанки)

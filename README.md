@@ -17,22 +17,22 @@ cp .env.example .env
 4. Собрать и поднять нужный сервис:
 
 ```bash
-make bot-build-docker
-make bot-run-docker
+make docker-bot-build
+make docker-bot-up
 
 # или веб-чат
-make web-build-docker
-make web-run-docker
+make docker-web-build
+make docker-web-up
 ```
 
 5. Подтянуть модель в локальную Ollama и при необходимости собрать индексы:
 
 ```bash
 ollama pull qwen3.5:9b
-make bot-reindex-docker
+make docker-bot-reindex
 
 # для веб-контейнера отдельно
-make web-reindex-docker
+make docker-web-reindex
 ```
 
 ## Что сейчас делает проект
@@ -54,11 +54,11 @@ make web-reindex-docker
 
 ## Полезные команды
 
-- `make bot-build-docker` / `make web-build-docker` — пересобрать Docker-образ нужного сервиса.
-- `make bot-run-docker` / `make web-run-docker` — поднять Telegram-бота или веб-чат.
-- `make bot-stop-docker` / `make web-stop-docker` — остановить нужный контейнер.
-- `make bot-remove-docker` / `make web-remove-docker` — удалить контейнер и его volumes.
-- `make bot-reindex-docker` / `make web-reindex-docker` — собрать RAG-индексы внутри нужного docker-контейнера.
+- `make docker-bot-build` / `make docker-web-build` — пересобрать Docker-образ нужного сервиса.
+- `make docker-bot-up` / `make docker-web-up` — поднять Telegram-бота или веб-чат.
+- `make docker-bot-stop` / `make docker-web-stop` — остановить нужный контейнер.
+- `make docker-bot-remove` / `make docker-web-remove` — удалить контейнер и его volumes.
+- `make docker-bot-reindex` / `make docker-web-reindex` — собрать RAG-индексы внутри нужного docker-контейнера.
 
 ## Структура проекта
 
