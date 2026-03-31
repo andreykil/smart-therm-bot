@@ -102,8 +102,6 @@ def prepare_local_base_model(config: QLoRAWorkspaceConfig, *, force: bool = Fals
     snapshot_download(
         repo_id=config.base_model,
         local_dir=str(snapshot_dir),
-        local_dir_use_symlinks=False,
-        resume_download=True,
     )
     if not _snapshot_is_complete(snapshot_dir):
         raise RuntimeError(

@@ -12,6 +12,7 @@ from typing import Any
 from telegram import BotCommand, Message, Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
+from src.chat.application.command_service import CommandService
 from src.chat.application.command_service import CommandParser
 from src.chat.composition import build_dialog_registry
 from src.config import Config
@@ -189,18 +190,21 @@ def build_transport_request(
 
 def build_start_text(transport: Any, *, chat_id: int) -> str:
     """Собрать приветственное сообщение без вызова chat turn."""
-    lease = transport.registry.acquire(f"chat:{chat_id}")
-    try:
-        with lease.lock:
-            lines = [
-                "<b>Привет! Я бот поддержки SmartTherm.</b>",
-                "В личке отвечаю на любой текст. В группе — на команды, mention и reply на мои сообщения.",
-                "",
-                lease.session.command_help_html(),
-            ]
-            return "\n".join(lines)
-    finally:
-        transport.registry.release(lease)
+    _ = transport
+    _ = chat_id
+    lines = [
+        "<b>Привет! Я бот поддержки SmartTherm.</b>",
+        "В личке отвечаю на любой текст. В группе — на команды, mention и reply на мои сообщения.",
+        "",
+        "<b>Команды:</b>",
+        "<pre>",
+        *(
+            f"{name:<16} — {description}"
+            for name, description in CommandService.command_items()
+        ),
+        "</pre>",
+    ]
+    return "\n".join(lines)
 
 
 def build_application(
@@ -345,8 +349,15 @@ async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if message is None:
         return
 
+    LOGGER.info(
+        "Handling /start chat_id=%s user_id=%s chat_type=%s",
+        message.chat_id,
+        message.from_user.id if message.from_user else None,
+        message.chat.type,
+    )
     transport = _get_transport(context.application)
     await message.reply_text(build_start_text(transport, chat_id=message.chat_id), parse_mode="HTML")
+    LOGGER.info("Handled /start chat_id=%s", message.chat_id)
 
 
 async def handle_command_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -370,8 +381,23 @@ async def _handle_transport_message(update: Update, context: ContextTypes.DEFAUL
 
     try:
         if request is None:
+            LOGGER.info(
+                "Ignoring Telegram message chat_id=%s user_id=%s chat_type=%s text=%r",
+                message.chat_id,
+                message.from_user.id if message.from_user else None,
+                message.chat.type,
+                message.text[:200],
+            )
             return
 
+        LOGGER.info(
+            "Handling Telegram message chat_id=%s user_id=%s chat_type=%s text=%r normalized=%r",
+            message.chat_id,
+            message.from_user.id if message.from_user else None,
+            message.chat.type,
+            message.text[:200],
+            request.text[:200],
+        )
         streaming_settings: TelegramNativeStreamingSettings = context.application.bot_data[STREAMING_SETTINGS_KEY]
         if (
             streaming_settings.enabled
@@ -379,10 +405,12 @@ async def _handle_transport_message(update: Update, context: ContextTypes.DEFAUL
             and not CommandParser.is_command(request.text)
         ):
             await _handle_private_stream_request(transport, context, message=message, request=request)
+            LOGGER.info("Handled Telegram streaming message chat_id=%s", message.chat_id)
             return
 
         response = transport.handle_request(request)
         await message.reply_text(response.text, parse_mode=response.parse_mode)
+        LOGGER.info("Handled Telegram message chat_id=%s", message.chat_id)
     except Exception:
         LOGGER.exception("Telegram message handling failed")
         await message.reply_text("⚠️ Не удалось обработать сообщение. Попробуйте ещё раз.")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 import torch
@@ -42,7 +43,7 @@ def export_gguf(config: QLoRAWorkspaceConfig, merged_path: Path) -> Path | None:
 
     output_path = paths.gguf_dir / f"model-{config.export.gguf_outtype}.gguf"
     command = [
-        "python",
+        sys.executable,
         converter_script,
         str(merged_path),
         "--outfile",

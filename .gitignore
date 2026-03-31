@@ -4,6 +4,7 @@ qlora/artifacts/*
 
 !data/raw/.gitkeep
 !data/processed/chat/chunks_rag.jsonl
+!data/processed/chat/lora_pairs.jsonl
 
 logs/
 
