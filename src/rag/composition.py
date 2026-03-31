@@ -29,10 +29,7 @@ class RAGInitializationResult:
 
 
 def _resolve_chunks_path(config: Config, chunks_file: str) -> str:
-    path = Path(chunks_file)
-    if not path.is_absolute():
-        path = config.project_root / path
-    return str(path)
+    return str(config.resolve_path(chunks_file))
 
 
 def build_rag_runtime(

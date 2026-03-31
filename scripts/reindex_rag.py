@@ -31,7 +31,7 @@ def setup_logging(verbose: bool = False):
     )
 
 
-def main():
+def main(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(
         description="Переиндексация RAG чанков",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -46,8 +46,8 @@ def main():
     parser.add_argument(
         "--chunks-file",
         type=str,
-        default="data/processed/chat/chunks_rag.jsonl",
-        help="Путь к JSONL файлу с чанками (по умолчанию: data/processed/chat/chunks_rag.jsonl)"
+        default=None,
+        help="Путь к JSONL файлу с чанками; по умолчанию используется rag.chunks_file из конфига"
     )
 
     parser.add_argument(
@@ -56,15 +56,15 @@ def main():
         help="Подробный вывод"
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     setup_logging(args.verbose)
 
     logger = logging.getLogger(__name__)
     config = Config.load()
+    chunks_path = config.resolve_path(args.chunks_file) if args.chunks_file else config.rag_chunks_path
 
-    chunks_path = Path(args.chunks_file)
     if not chunks_path.exists():
-        logger.error(f"❌ Файл не найден: {args.chunks_file}")
+        logger.error(f"❌ Файл не найден: {chunks_path}")
         logger.info("Сначала создайте чанки: make chat-chunks")
         sys.exit(1)
 
@@ -76,8 +76,8 @@ def main():
             top_k=config.rag.top_k,
         )
 
-        logger.info(f"📦 Переиндексация из {args.chunks_file}...")
-        stats = runtime.index_manager.index_from_file(args.chunks_file, save=True)
+        logger.info(f"📦 Переиндексация из {chunks_path}...")
+        stats = runtime.index_manager.index_from_file(str(chunks_path), save=True)
 
         logger.info("✅ Переиндексация завершена!")
         logger.info(f"   Всего чанков: {stats.total_chunks}")

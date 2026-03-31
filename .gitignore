@@ -1,5 +1,6 @@
 # Данные
 data/*
+docs/*
 qlora/artifacts/*
 
 !data/raw/.gitkeep
@@ -219,3 +220,4 @@ __marimo__/
 
 AGENTS.md
 .kilocode/
+.kilocodeignore

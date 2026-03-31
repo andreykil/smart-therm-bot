@@ -213,6 +213,69 @@ def test_initialize_retrieval_service_resolves_relative_chunks_path(monkeypatch)
     assert Path(captured["chunks_file"]) == config.project_root / "data" / "processed" / "chat" / "test" / "chunks_rag_test.jsonl"
 
 
+def test_initialize_retrieval_service_without_chunks_file_only_loads_existing_indices(monkeypatch) -> None:
+    events: list[str] = []
+
+    class FakeIndexManager:
+        def index_from_file(self, chunks_file: str, *, save: bool = True) -> None:
+            del chunks_file, save
+            events.append("index_from_file")
+            raise AssertionError("index_from_file should not be called without chunks_file")
+
+        def ensure_loaded(self) -> bool:
+            events.append("ensure_loaded")
+            return True
+
+    class FakeRuntime:
+        def __init__(self) -> None:
+            self.retrieval_service = object()
+            self.index_manager = FakeIndexManager()
+
+    monkeypatch.setattr("src.rag.composition.build_rag_runtime", lambda **_: FakeRuntime())
+
+    config = Config()
+    result = initialize_retrieval_service(
+        config=config,
+        base_url=config.llm.base_url,
+        top_k=config.rag.top_k,
+        vector_weight=0.5,
+        bm25_weight=0.5,
+    )
+
+    assert result.retrieval_service is not None
+    assert events == ["ensure_loaded"]
+
+
+def test_initialize_retrieval_service_test_mode_overrides_explicit_chunks_file(monkeypatch) -> None:
+    captured: dict[str, str] = {}
+
+    class FakeIndexManager:
+        def index_from_file(self, chunks_file: str, *, save: bool = True) -> None:
+            del save
+            captured["chunks_file"] = chunks_file
+
+    class FakeRuntime:
+        def __init__(self) -> None:
+            self.retrieval_service = object()
+            self.index_manager = FakeIndexManager()
+
+    monkeypatch.setattr("src.rag.composition.build_rag_runtime", lambda **_: FakeRuntime())
+
+    config = Config()
+    result = initialize_retrieval_service(
+        config=config,
+        base_url=config.llm.base_url,
+        top_k=config.rag.top_k,
+        vector_weight=0.5,
+        bm25_weight=0.5,
+        chunks_file="data/processed/chat/custom_chunks.jsonl",
+        test_mode=True,
+    )
+
+    assert result.retrieval_service is not None
+    assert Path(captured["chunks_file"]) == config.project_root / "data" / "processed" / "chat" / "test" / "chunks_rag_test.jsonl"
+
+
 def test_command_dispatcher_and_stream() -> None:
     client = FakeClient(model="fake-model", base_url="http://localhost:11434")
     service = ChatService(

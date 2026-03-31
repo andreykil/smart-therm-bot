@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, field_validator
 
 class RAGConfig(BaseModel):
     embedding_model: str = "BAAI/bge-m3"
+    chunks_file: str = "data/processed/chat/chunks_rag.jsonl"
     chunk_size: int = 512
     chunk_overlap: int = 50
     top_k: int = 5
@@ -208,6 +209,16 @@ class Config(BaseModel):
     @property
     def raw_dir(self) -> Path:
         return self.data_dir_path / "raw"
+
+    def resolve_path(self, path: str | Path) -> Path:
+        candidate = Path(path)
+        if not candidate.is_absolute():
+            candidate = self.project_root / candidate
+        return candidate
+
+    @property
+    def rag_chunks_path(self) -> Path:
+        return self.resolve_path(self.rag.chunks_file)
 
     @classmethod
     def load(cls, config_file: str | Path | None = None) -> "Config":

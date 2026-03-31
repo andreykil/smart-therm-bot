@@ -7,6 +7,7 @@ models_dir: "data/models"
 # RAG настройки
 rag:
   embedding_model: "nomic-embed-text"
+  chunks_file: "data/processed/chat/chunks_rag_extended.jsonl"
   chunk_size: 512
   chunk_overlap: 50
   top_k: 10
