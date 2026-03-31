@@ -48,7 +48,7 @@ export:
   ollama_dir_name: "ollama"
   merge_after_train: true
   gguf_enabled: true
-  gguf_converter_script: null
+  gguf_converter_script: "/Users/andrey/dev/llama.cpp/convert_hf_to_gguf.py"
   gguf_outtype: "q8_0"
   ollama_modelfile_enabled: true
   ollama_model_name: "smart-therm-Qwen2.5-3B"
