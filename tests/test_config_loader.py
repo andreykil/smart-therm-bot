@@ -10,7 +10,8 @@ def test_config_load_merges_default_and_explicit_override() -> None:
 
     assert config.llm.base_url == "http://host.docker.internal:11434"
     assert config.llm.model == "qwen3.5:9b"
-    assert config.rag.chunks_file == "data/processed/chat/chunks_rag.jsonl"
+    assert config.rag.chunks_file == "data/processed/chat/chunks_rag_extended.jsonl"
+    assert config.rag.reranker.model == "BAAI/bge-reranker-base"
 
 
 def test_config_load_uses_smart_therm_config_env(monkeypatch) -> None:

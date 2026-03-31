@@ -47,7 +47,7 @@ class ChatContextRetriever(Protocol):
         self,
         query: str,
         top_k: int | None = None,
-        use_reranker: bool = False,
+        use_reranker: bool = True,
     ) -> RetrievalResult: ...
 
     def get_stats(self) -> dict[str, object]: ...

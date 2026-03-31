@@ -20,7 +20,7 @@ class RetrievalService(ChatContextRetriever):
         self,
         query: str,
         top_k: int | None = None,
-        use_reranker: bool = False,
+        use_reranker: bool = True,
     ) -> RetrievalResult:
         result = self.hybrid_retriever.search(
             query=query,
@@ -55,7 +55,7 @@ class RetrievalService(ChatContextRetriever):
             "total_chunks": vector_size,
             "faiss_vectors": vector_size,
             "bm25_documents": bm25_size,
-            "reranker": self.hybrid_retriever.reranker.name,
+            "reranker": self.hybrid_retriever.reranker.name if self.hybrid_retriever.reranker is not None else None,
             "weights": {
                 "vector": self.hybrid_retriever.vector_weight,
                 "bm25": self.hybrid_retriever.bm25_weight,

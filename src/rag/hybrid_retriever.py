@@ -8,13 +8,12 @@ from typing import Optional
 from src.rag.models import (
     RAGChunk,
     RetrievalResult,
-    RerankedResult,
     Query,
     SearchResult
 )
 from src.rag.vector_store import VectorStore
 from src.rag.bm25_store import BM25Store
-from src.rag.reranker import Reranker, NoOpReranker
+from src.rag.reranker import Reranker
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +47,7 @@ class HybridRetriever:
     ):
         self.vector_store = vector_store
         self.bm25_store = bm25_store
-        self.reranker = reranker or NoOpReranker()
+        self.reranker = reranker
         self.vector_weight = vector_weight
         self.bm25_weight = bm25_weight
         self.top_k = top_k
@@ -84,9 +83,13 @@ class HybridRetriever:
             if top_k is not None:
                 query_obj.top_k = top_k
 
+        search_top_k = query_obj.top_k
+        if use_reranker and self.reranker is not None:
+            search_top_k = max(search_top_k, self.reranker.candidate_pool_size)
+
         # Ищем в обоих индексах
-        faiss_results = self.vector_store.search(query_obj.text, top_k=query_obj.top_k)
-        bm25_results = self.bm25_store.search(query_obj.text, top_k=query_obj.top_k)
+        faiss_results = self.vector_store.search(query_obj.text, top_k=search_top_k)
+        bm25_results = self.bm25_store.search(query_obj.text, top_k=search_top_k)
 
         logger.debug(f"FAISS: {len(faiss_results)}, BM25: {len(bm25_results)}")
 
@@ -102,7 +105,7 @@ class HybridRetriever:
         # Reranking если нужен
         reranked = use_reranker and self.reranker is not None
         if reranked and filtered:
-            results = self._apply_reranking(filtered, query_obj.text)
+            results = self._apply_reranking(filtered, query_obj.text, top_k=query_obj.top_k)
         else:
             results = filtered
 
@@ -239,7 +242,8 @@ class HybridRetriever:
     def _apply_reranking(
         self,
         results: list[RetrievalResult],
-        query: str
+        query: str,
+        top_k: int,
     ) -> list[RetrievalResult]:
         """
         Применить reranking.
@@ -254,10 +258,13 @@ class HybridRetriever:
         if not results:
             return results
 
+        assert self.reranker is not None, "Reranker must be configured before reranking"
+
         # Подготовка данных для reranker
         reranked_results = self.reranker.rerank(
             query=query,
-            results=results
+            results=results,
+            top_k=top_k,
         )
 
         return reranked_results

@@ -84,7 +84,7 @@ class FakeRAG:
     def __init__(self) -> None:
         self.queries: list[tuple[str, int | None]] = []
 
-    def search(self, query: str, top_k: int | None = None, use_reranker: bool = False) -> RetrievalResult:
+    def search(self, query: str, top_k: int | None = None, use_reranker: bool = True) -> RetrievalResult:
         del use_reranker
         self.queries.append((query, top_k))
         chunk = RetrievedChunk(
@@ -100,7 +100,7 @@ class FakeRAG:
 
 
 class MisconfiguredRAG:
-    def search(self, query: str, top_k: int | None = None, use_reranker: bool = False) -> RetrievalResult:
+    def search(self, query: str, top_k: int | None = None, use_reranker: bool = True) -> RetrievalResult:
         del query, top_k, use_reranker
         raise ValueError("missing FAISS index path")
 
@@ -109,7 +109,7 @@ class MisconfiguredRAG:
 
 
 class BrokenRAG:
-    def search(self, query: str, top_k: int | None = None, use_reranker: bool = False) -> RetrievalResult:
+    def search(self, query: str, top_k: int | None = None, use_reranker: bool = True) -> RetrievalResult:
         del query, top_k, use_reranker
         raise RuntimeError("faiss search crashed")
 

@@ -9,12 +9,19 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class RAGConfig(BaseModel):
+    class RerankerConfig(BaseModel):
+        model: str = "BAAI/bge-reranker-base"
+        device: str = "auto"
+        batch_size: int = 8
+        max_length: int = 512
+        candidate_pool_size: int = 20
+
     embedding_model: str = "BAAI/bge-m3"
     chunks_file: str = "data/processed/chat/chunks_rag.jsonl"
     chunk_size: int = 512
     chunk_overlap: int = 50
     top_k: int = 5
-    reranker_model: str = "BAAI/bge-reranker-base"
+    reranker: RerankerConfig = Field(default_factory=RerankerConfig)
 
 
 class LLMConfig(BaseModel):

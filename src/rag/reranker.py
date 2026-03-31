@@ -1,260 +1,167 @@
-"""
-Reranker — улучшение порядка результатов поиска
+"""Cross-encoder reranker for hybrid RAG retrieval."""
 
-Этот модуль содержит интерфейс Reranker и его реализации.
-Reranker используется после гибридного поиска для более точного ранжирования.
-"""
+from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Optional
+from pathlib import Path
+from threading import Lock
+from typing import cast
 
-from src.rag.models import RetrievalResult, RAGChunk
+import torch
+from transformers import (
+    AutoModelForSequenceClassification,
+    AutoTokenizer,
+    PreTrainedModel,
+    PreTrainedTokenizerBase,
+)
+
+from src.rag.models import RetrievalResult
 
 logger = logging.getLogger(__name__)
 
 
 class Reranker(ABC):
-    """
-    Абстрактный базовый класс для reranker.
-
-    Reranker получает результаты поиска и переранжирует их
-    на основе более глубокого анализа запроса и документов.
-
-    Note:
-        Это ЗАГОТОВКА — реальная реализация требует модели типа
-        BAAI/bge-reranker-base или подобной.
-    """
+    """Reranks hybrid retrieval candidates against the original query."""
 
     @abstractmethod
     def rerank(
         self,
         query: str,
         results: list[RetrievalResult],
-        top_k: Optional[int] = None
+        top_k: int | None = None,
     ) -> list[RetrievalResult]:
-        """
-        Переранжировать результаты поиска.
-
-        Args:
-            query: Оригинальный запрос
-            results: Результаты поиска
-            top_k: Ограничить количество результатов
-
-        Returns:
-            Переранжированные результаты
-        """
-        pass
+        """Return results sorted by reranker score."""
 
     @property
     @abstractmethod
     def name(self) -> str:
-        """Имя reranker"""
-        pass
-
-
-class NoOpReranker(Reranker):
-    """
-    Dummy reranker — просто возвращает результаты как есть.
-
-    Используется по умолчанию, когда real reranker не подключен.
-    """
-
-    def rerank(
-        self,
-        query: str,
-        results: list[RetrievalResult],
-        top_k: Optional[int] = None
-    ) -> list[RetrievalResult]:
-        """Возвращает результаты без изменений"""
-        if top_k is not None:
-            return results[:top_k]
-        return results
+        """Human-readable reranker identifier."""
 
     @property
-    def name(self) -> str:
-        return "no-op"
+    @abstractmethod
+    def candidate_pool_size(self) -> int:
+        """How many hybrid candidates should be scored before final truncation."""
 
 
-class BGEReranker(Reranker):
-    """
-    BGE Reranker через Ollama API.
+class HuggingFaceReranker(Reranker):
+    """Cross-encoder reranker backed by Hugging Face `transformers`."""
 
-    Заготовка для интеграции BAAI/bge-reranker-base или подобной модели.
-
-    Note:
-        ДЛЯ РЕАЛИЗАЦИИ требуется:
-        1. Ollama модель типа bge-reranker
-        2. Реализация pairwise scoring
-        3. Подключение к Ollama API
-
-    Пример использования Ollama для reranking:
-    ```python
-    # Ollama не имеет нативной поддержки reranking,
-    # но можно использовать модель в режиме сравнения пар
-    response = ollama.chat(
-        model="bge-reranker",
-        messages=[{
-            "role": "user",
-            "content": f"Score: 1 if relevant else 0\nQuery: {query}\nDoc: {doc}"
-        }]
-    )
-    ```
-    """
+    _model_cache: dict[
+        tuple[str, str, str],
+        tuple[PreTrainedTokenizerBase, PreTrainedModel],
+    ] = {}
+    _cache_lock = Lock()
 
     def __init__(
         self,
-        model: str = "bge-reranker",
-        base_url: str = "http://localhost:11434",
-        top_k: int = 10
-    ):
-        self.model = model
-        self.base_url = base_url
-        self.top_k = top_k
-        self._available = self._check_availability()
-
-    def _check_availability(self) -> bool:
-        """Проверить доступность модели"""
-        try:
-            import requests
-            response = requests.get(f"{self.base_url}/api/tags", timeout=5)
-            models = [m["name"] for m in response.json().get("models", [])]
-            available = self.model in models
-            if not available:
-                logger.warning(
-                    f"Reranker модель '{self.model}' не найдена в Ollama. "
-                    f"Будет использован NoOpReranker."
-                )
-            return available
-        except Exception as e:
-            logger.warning(f"Не удалось проверить reranker: {e}")
-            return False
-
-    def rerank(
-        self,
-        query: str,
-        results: list[RetrievalResult],
-        top_k: Optional[int] = None
-    ) -> list[RetrievalResult]:
-        """
-        Переранжировать результаты с помощью BGE reranker.
-
-        Args:
-            query: Оригинальный запрос
-            results: Результаты поиска
-            top_k: Количество возвращаемых результатов
-
-        Returns:
-            Переранжированные результаты
-        """
-        if not results:
-            return results
-
-        if not self._available:
-            logger.info("Reranker недоступен, возвращаю результаты без изменений")
-            return results[:top_k] if top_k else results
-
-        # TODO: Реализовать pairwise reranking
-        # Для каждой пары (query, doc) получить score
-        # и переранжировать по сумме scores
-        raise NotImplementedError(
-            "BGE Reranker требует реализации pairwise scoring. "
-            "Используйте NoOpReranker или реализуйте."
-        )
-
-    @property
-    def name(self) -> str:
-        return f"bge-reranker({self.model})"
-
-
-class CrossEncoderReranker(Reranker):
-    """
-    Cross-Encoder Reranker через sentence-transformers.
-
-    Альтернативная реализация с использованием sentence-transformers
-    для кросс-encoder reranking.
-
-    Note:
-        ДЛЯ РЕАЛИЗАЦИИ требуется:
-        1. sentence-transformers библиотека
-        2. Модель типа cross-encoder/ms-marco
-        3. GPU для эффективности
-
-    ```python
-    from sentence_transformers import CrossEncoder
-
-    model = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
-    scores = model.predict([(query, doc) for doc in docs])
-    ```
-    """
-
-    def __init__(
-        self,
-        model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
-        device: str = "cpu",
-        top_k: int = 10
-    ):
+        *,
+        model_name: str,
+        models_dir: Path,
+        device: str = "auto",
+        batch_size: int = 8,
+        max_length: int = 512,
+        candidate_pool_size: int = 20,
+    ) -> None:
         self.model_name = model_name
-        self.device = device
-        self.top_k = top_k
-        self._model = None
+        self.batch_size = batch_size
+        self.max_length = max_length
+        self._candidate_pool_size = candidate_pool_size
+        self.cache_dir = models_dir / "huggingface"
+        self.device = self._resolve_device(device)
+        self._tokenizer, self._model = self._load_components()
 
-    def _load_model(self):
-        """Ленивая загрузка модели"""
-        if self._model is None:
-            # TODO: Реализовать загрузку
-            raise NotImplementedError(
-                "CrossEncoder требует sentence-transformers. "
-                "Установите: pip install sentence-transformers"
+    @staticmethod
+    def _resolve_device(device: str) -> str:
+        if device != "auto":
+            return device
+        if torch.cuda.is_available():
+            return "cuda"
+        mps_backend = getattr(torch.backends, "mps", None)
+        if mps_backend is not None and mps_backend.is_available():
+            return "mps"
+        return "cpu"
+
+    def _load_components(self) -> tuple[PreTrainedTokenizerBase, PreTrainedModel]:
+        cache_key = (self.model_name, self.device, str(self.cache_dir))
+
+        with self._cache_lock:
+            cached = self._model_cache.get(cache_key)
+            if cached is not None:
+                return cached
+
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+            tokenizer = AutoTokenizer.from_pretrained(
+                self.model_name,
+                cache_dir=str(self.cache_dir),
             )
+            if tokenizer.pad_token is None and tokenizer.eos_token is not None:
+                tokenizer.pad_token = tokenizer.eos_token
+
+            model = AutoModelForSequenceClassification.from_pretrained(
+                self.model_name,
+                cache_dir=str(self.cache_dir),
+            )
+            model.to(self.device)
+            model.eval()
+
+            components = (tokenizer, model)
+            self._model_cache[cache_key] = components
+            return components
+
+    def _score(self, query: str, results: list[RetrievalResult]) -> list[float]:
+        scores: list[float] = []
+
+        for start in range(0, len(results), self.batch_size):
+            batch = results[start:start + self.batch_size]
+            documents = [result.chunk.to_text() for result in batch]
+            encoded = self._tokenizer(
+                [query] * len(batch),
+                documents,
+                padding=True,
+                truncation=True,
+                max_length=self.max_length,
+                return_tensors="pt",
+            )
+            encoded = {name: tensor.to(self.device) for name, tensor in encoded.items()}
+
+            with torch.inference_mode():
+                logits = cast(torch.Tensor, self._model(**encoded).logits)
+
+            if logits.ndim == 2:
+                if logits.shape[1] == 1:
+                    batch_scores = logits[:, 0]
+                else:
+                    batch_scores = logits[:, -1]
+            else:
+                batch_scores = logits.squeeze(-1)
+
+            scores.extend(batch_scores.detach().float().cpu().tolist())
+
+        return scores
 
     def rerank(
         self,
         query: str,
         results: list[RetrievalResult],
-        top_k: Optional[int] = None
+        top_k: int | None = None,
     ) -> list[RetrievalResult]:
-        """Переранжировать с помощью cross-encoder"""
         if not results:
-            return results
+            return []
 
-        top_k = top_k or self.top_k
+        limit = len(results) if top_k is None else top_k
+        scored_results = zip(results, self._score(query, results), strict=False)
+        ordered = sorted(scored_results, key=lambda item: item[1], reverse=True)
 
-        # TODO: Реализовать reranking
-        raise NotImplementedError(
-            "CrossEncoder reranking требует реализации"
-        )
+        return [
+            result.model_copy(update={"score": float(score), "rank": rank})
+            for rank, (result, score) in enumerate(ordered[:limit], start=1)
+        ]
 
     @property
     def name(self) -> str:
-        return f"cross-encoder({self.model_name})"
+        return f"huggingface({self.model_name})"
 
-
-def create_reranker(
-    reranker_type: str = "no-op",
-    **kwargs
-) -> Reranker:
-    """
-    Фабрика для создания reranker.
-
-    Args:
-        reranker_type: Тип reranker ('no-op', 'bge', 'cross-encoder')
-        **kwargs: Параметры для конкретного reranker
-
-    Returns:
-        Reranker instance
-    """
-    rerankers = {
-        "no-op": NoOpReranker,
-        "bge": BGEReranker,
-        "cross-encoder": CrossEncoderReranker,
-    }
-
-    if reranker_type not in rerankers:
-        logger.warning(
-            f"Неизвестный reranker type: {reranker_type}. "
-            f"Используется NoOpReranker."
-        )
-        return NoOpReranker()
-
-    return rerankers[reranker_type](**kwargs)
+    @property
+    def candidate_pool_size(self) -> int:
+        return self._candidate_pool_size

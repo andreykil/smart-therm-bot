@@ -17,7 +17,7 @@ if "rank_bm25" not in sys.modules:
             del query_tokens
             return [0.0 for _ in self.corpus]
 
-    rank_bm25.BM25Okapi = BM25Okapi
+    setattr(rank_bm25, "BM25Okapi", BM25Okapi)
     sys.modules["rank_bm25"] = rank_bm25
 
 
@@ -40,10 +40,10 @@ if "telegram" not in sys.modules:
         def __init__(self, *args, **kwargs) -> None:
             del args, kwargs
 
-    telegram.Bot = Bot
-    telegram.Message = Message
-    telegram.Update = Update
-    telegram.BotCommand = BotCommand
+    setattr(telegram, "Bot", Bot)
+    setattr(telegram, "Message", Message)
+    setattr(telegram, "Update", Update)
+    setattr(telegram, "BotCommand", BotCommand)
     sys.modules["telegram"] = telegram
 
     telegram_ext = types.ModuleType("telegram.ext")
@@ -91,9 +91,9 @@ if "telegram" not in sys.modules:
         COMMAND = _FilterExpr()
         TEXT = _FilterExpr()
 
-    telegram_ext.Application = Application
-    telegram_ext.CommandHandler = CommandHandler
-    telegram_ext.ContextTypes = ContextTypes
-    telegram_ext.MessageHandler = MessageHandler
-    telegram_ext.filters = _Filters()
+    setattr(telegram_ext, "Application", Application)
+    setattr(telegram_ext, "CommandHandler", CommandHandler)
+    setattr(telegram_ext, "ContextTypes", ContextTypes)
+    setattr(telegram_ext, "MessageHandler", MessageHandler)
+    setattr(telegram_ext, "filters", _Filters())
     sys.modules["telegram.ext"] = telegram_ext

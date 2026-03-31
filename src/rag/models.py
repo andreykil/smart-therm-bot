@@ -58,20 +58,6 @@ class RetrievalResult(BaseModel):
         return hash((self.chunk.content.text, self.source))
 
 
-class RerankedResult(BaseModel):
-    """Результат после reranking"""
-    chunk: RAGChunk
-    original_scores: dict[str, float] = Field(
-        default_factory=dict,
-        description="Оригинальные скоринге от разных поисковиков"
-    )
-    rerank_score: Optional[float] = Field(
-        None,
-        description="Финальный скоринг после reranking"
-    )
-    rank: int = Field(0, description="Итоговый ранг")
-
-
 class Query(BaseModel):
     """Запрос к RAG системе"""
     text: str = Field(..., min_length=1, description="Текст запроса")

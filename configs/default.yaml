@@ -11,7 +11,12 @@ rag:
   chunk_size: 512
   chunk_overlap: 50
   top_k: 10
-  reranker_model: "BAAI/bge-reranker-base"
+  reranker:
+    model: "BAAI/bge-reranker-base"
+    device: "auto"
+    batch_size: 8
+    max_length: 512
+    candidate_pool_size: 20
 
 # LLM настройки
 llm:

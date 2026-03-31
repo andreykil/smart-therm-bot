@@ -78,7 +78,7 @@ class FakeClient:
 
 
 class FakeRAG:
-    def search(self, query: str, top_k: int | None = None, use_reranker: bool = False):
+    def search(self, query: str, top_k: int | None = None, use_reranker: bool = True):
         del query, top_k, use_reranker
         raise AssertionError("search should not be called in this smoke test")
 
@@ -101,9 +101,9 @@ class FakeHybridRetrieverForStats:
         self.vector_weight = 0.6
         self.bm25_weight = 0.4
         self.top_k = top_k
-        self.reranker = type("FakeReranker", (), {"name": "no-op"})()
+        self.reranker = type("FakeReranker", (), {"name": "huggingface(BAAI/bge-reranker-base)"})()
 
-    def search(self, query: str, top_k: int, use_reranker: bool = False):
+    def search(self, query: str, top_k: int, use_reranker: bool = True):
         del query, top_k, use_reranker
         raise AssertionError("search is not expected in stats-only test")
 
@@ -181,6 +181,7 @@ def test_retrieval_service_stats_preserve_chunk_counters_for_cli() -> None:
     assert stats["total_chunks"] == 7
     assert stats["faiss_vectors"] == 7
     assert stats["bm25_documents"] == 7
+    assert stats["reranker"] == "huggingface(BAAI/bge-reranker-base)"
     assert stats["weights"] == {"vector": 0.6, "bm25": 0.4}
 
 
@@ -197,6 +198,7 @@ def test_initialize_retrieval_service_resolves_relative_chunks_path(monkeypatch)
             self.retrieval_service = object()
             self.index_manager = FakeIndexManager()
 
+    monkeypatch.setattr("src.rag.composition.build_reranker", lambda **_: object())
     monkeypatch.setattr("src.rag.composition.build_rag_runtime", lambda **_: FakeRuntime())
 
     config = Config()
@@ -231,6 +233,7 @@ def test_initialize_retrieval_service_without_chunks_file_only_loads_existing_in
             self.retrieval_service = object()
             self.index_manager = FakeIndexManager()
 
+    monkeypatch.setattr("src.rag.composition.build_reranker", lambda **_: object())
     monkeypatch.setattr("src.rag.composition.build_rag_runtime", lambda **_: FakeRuntime())
 
     config = Config()
@@ -259,6 +262,7 @@ def test_initialize_retrieval_service_test_mode_overrides_explicit_chunks_file(m
             self.retrieval_service = object()
             self.index_manager = FakeIndexManager()
 
+    monkeypatch.setattr("src.rag.composition.build_reranker", lambda **_: object())
     monkeypatch.setattr("src.rag.composition.build_rag_runtime", lambda **_: FakeRuntime())
 
     config = Config()
@@ -274,6 +278,26 @@ def test_initialize_retrieval_service_test_mode_overrides_explicit_chunks_file(m
 
     assert result.retrieval_service is not None
     assert Path(captured["chunks_file"]) == config.project_root / "data" / "processed" / "chat" / "test" / "chunks_rag_test.jsonl"
+
+
+def test_initialize_retrieval_service_returns_error_when_reranker_cannot_load(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "src.rag.composition.build_reranker",
+        lambda **_: (_ for _ in ()).throw(FileNotFoundError("reranker weights missing")),
+    )
+
+    config = Config()
+    result = initialize_retrieval_service(
+        config=config,
+        base_url=config.llm.base_url,
+        top_k=config.rag.top_k,
+        vector_weight=0.5,
+        bm25_weight=0.5,
+    )
+
+    assert result.retrieval_service is None
+    assert result.index_manager is None
+    assert result.error == "FileNotFoundError: reranker weights missing"
 
 
 def test_command_dispatcher_and_stream() -> None:
