@@ -22,7 +22,7 @@ rag:
 llm:
   provider: "ollama"
   model: "qwen3.5:9b"  # Название модели в Ollama ("llama3.1:8b", "qwen3.5:9b")
-  base_url: "http://localhost:11434"  # Для Docker override см. configs/docker.yaml
+  base_url: "http://localhost:11434"  # Для Docker override см. configs/docker.bot.yaml / configs/docker.web.yaml
   think: false  # null - не передавать параметр think; true/false - передавать явно
 
   temperature: 0.1 # Для детерминированных ответов (RAG, чанки)

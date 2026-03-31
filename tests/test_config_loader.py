@@ -6,7 +6,7 @@ from src.config import Config
 
 
 def test_config_load_merges_default_and_explicit_override() -> None:
-    config = Config.load("configs/docker.yaml")
+    config = Config.load("configs/docker.bot.yaml")
 
     assert config.llm.base_url == "http://host.docker.internal:11434"
     assert config.llm.model == "qwen3.5:9b"
@@ -15,11 +15,13 @@ def test_config_load_merges_default_and_explicit_override() -> None:
 
 
 def test_config_load_uses_smart_therm_config_env(monkeypatch) -> None:
-    monkeypatch.setenv("SMART_THERM_CONFIG", "configs/docker.yaml")
+    monkeypatch.setenv("SMART_THERM_CONFIG", "configs/docker.web.yaml")
 
     config = Config.load()
 
     assert config.llm.base_url == "http://host.docker.internal:11434"
+    assert config.server.host == "0.0.0.0"
+    assert config.server.port == 8000
 
 
 def test_config_load_overrides_rag_chunks_file_from_env(monkeypatch, tmp_path) -> None:

@@ -14,18 +14,25 @@ cp .env.example .env
 
 3. Убедиться, что локальная Ollama уже запущена на хосте на стандартном порту `11434`.
 
-4. Собрать и поднять стек:
+4. Собрать и поднять нужный сервис:
 
 ```bash
-make docker-build
-make docker-up
+make bot-build-docker
+make bot-run-docker
+
+# или веб-чат
+make web-build-docker
+make web-run-docker
 ```
 
 5. Подтянуть модель в локальную Ollama и при необходимости собрать индексы:
 
 ```bash
 ollama pull qwen3.5:9b
-make docker-reindex
+make bot-reindex-docker
+
+# для веб-контейнера отдельно
+make web-reindex-docker
 ```
 
 ## Что сейчас делает проект
@@ -36,22 +43,22 @@ make docker-reindex
 - Хранит историю ходов и вручную вводимые факты по `dialog_key` в SQLite.
 - Поддерживает полный pipeline подготовки данных: фильтрация → чанки → индексация.
 - Поддерживает CLI чат для тестов.
-- Единый composition flow: `telegram -> transport -> composition -> application -> domain`.
 
-По умолчанию бот стартует с RAG, если индексы доступны. В личке он отвечает на любой текст; в группах — только на slash-команды, `@mention` и reply на сообщение бота.
+По умолчанию бот стартует с RAG, если индексы доступны. В личке он отвечает на любой текст; в группах — только на slash-команды, обращения `@smart_therm_bot` и ответы на сообщение бота.
 
 ### Где хранятся параметры
 
 - В [`configs/default.yaml`](configs/default.yaml): все постоянные параметры приложения — модель, RAG, memory, общие пути.
-- В [`configs/docker.yaml`](configs/docker.yaml): только docker-specific override, сейчас это адрес локальной Ollama на хосте.
+- В [`configs/docker.bot.yaml`](configs/docker.bot.yaml) и [`configs/docker.web.yaml`](configs/docker.web.yaml): per-service docker override, сейчас это адрес локальной Ollama на хосте и web server settings.
 - В [`.env`](.env): только environment-specific и секретные значения, прежде всего `TELEGRAM_BOT_TOKEN`.
 
 ## Полезные команды
 
-- `make docker-build` — пересобрать Docker-образ бота.
-- `make docker-up` / `make docker-down` — поднять или остановить контейнер бота.
-- `make docker-remove` — удалить контейнер, сеть и volumes compose-стека.
-- `make docker-reindex` — собрать RAG-индексы внутри docker-контейнера.
+- `make bot-build-docker` / `make web-build-docker` — пересобрать Docker-образ нужного сервиса.
+- `make bot-run-docker` / `make web-run-docker` — поднять Telegram-бота или веб-чат.
+- `make bot-stop-docker` / `make web-stop-docker` — остановить нужный контейнер.
+- `make bot-remove-docker` / `make web-remove-docker` — удалить контейнер и его volumes.
+- `make bot-reindex-docker` / `make web-reindex-docker` — собрать RAG-индексы внутри нужного docker-контейнера.
 
 ## Структура проекта
 

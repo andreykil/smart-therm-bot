@@ -1,0 +1,8 @@
+# Docker override для веб-чата: приложение в контейнере, Ollama на хосте.
+
+llm:
+  base_url: "http://host.docker.internal:11434"
+
+server:
+  host: "0.0.0.0"
+  port: 8000

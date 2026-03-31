@@ -1,17 +1,35 @@
+x-smart-therm-service: &smart-therm-service
+  build:
+    context: .
+  restart: unless-stopped
+  env_file:
+    - .env
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
 services:
   bot:
-    build:
-      context: .
-    restart: unless-stopped
-    env_file:
-      - .env
+    <<: *smart-therm-service
     environment:
-      SMART_THERM_CONFIG: ${SMART_THERM_CONFIG:-configs/docker.yaml}
+      SMART_THERM_CONFIG: ${BOT_SMART_THERM_CONFIG:-configs/docker.bot.yaml}
     volumes:
       - bot_runtime:/app/data/runtime
       - bot_indices:/app/data/indices
     command: ["python", "-m", "scripts.run_telegram_bot"]
 
+  web:
+    <<: *smart-therm-service
+    environment:
+      SMART_THERM_CONFIG: ${WEB_SMART_THERM_CONFIG:-configs/docker.web.yaml}
+    volumes:
+      - web_runtime:/app/data/runtime
+      - web_indices:/app/data/indices
+    ports:
+      - "${SMART_THERM_WEB_BIND_HOST:-127.0.0.1}:${SMART_THERM_WEB_PORT:-8000}:8000"
+    command: ["python", "-m", "scripts.run_web_chat"]
+
 volumes:
   bot_runtime:
   bot_indices:
+  web_runtime:
+  web_indices:

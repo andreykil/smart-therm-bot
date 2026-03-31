@@ -1,0 +1,4 @@
+# Docker override для Telegram-бота: приложение в контейнере, Ollama на хосте.
+
+llm:
+  base_url: "http://host.docker.internal:11434"
